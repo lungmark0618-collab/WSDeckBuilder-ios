@@ -31,6 +31,15 @@ struct Card: Decodable, Identifiable, Hashable {
 
     var defaultPrinting: Printing { printings[0] }
 
+    /// 商品代碼：卡號最後一個「-」前面的部分（如 "SFN/S108-024" → "SFN/S108"）。
+    /// 同系列常常橫跨好幾波不同商品，這是用來分開瀏覽用的依據——見
+    /// docs/series_breakdown_report.md（Codex 整理）："product code 取卡號
+    /// 最後一個 - 前面的部分"
+    var productCode: String {
+        guard let dash = id.range(of: "-", options: .backwards) else { return id }
+        return String(id[..<dash.lowerBound])
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, printings, level, cost, power, soul, trigger, source
         case nameJP = "name_jp"
@@ -124,6 +133,9 @@ enum CardColor: String, Codable, CaseIterable, Identifiable {
 enum TriggerIcon: String, Codable, CaseIterable, Identifiable {
     case soul, soul2, gate, treasure, comeback
     case draw, pool, shot, standby, choice
+    // 葬送的芙莉蓮 Card Set 3（SFN/S136）新出的圓形風車狀標誌，資料來源目前
+    // 誤跟 choice 共用同一個值，等資料那邊修正後這裡再對應新的原始字串
+    case wheel
     var id: String { rawValue }
     /// 台灣圈子慣用單字標籤（§3.4）
     var label: String {
@@ -138,6 +150,7 @@ enum TriggerIcon: String, Codable, CaseIterable, Identifiable {
         case .shot: "槍"
         case .standby: "開機"
         case .choice: "箭頭"
+        case .wheel: "新"
         }
     }
     /// 官方卡面圖示（Assets 內，抓自官網 _partimages）；nil 表示無圖示退回文字
@@ -151,7 +164,10 @@ enum TriggerIcon: String, Codable, CaseIterable, Identifiable {
         case .pool: nil
         case .shot: "trigger_shot"
         case .standby: "trigger_standby"
-        case .choice: "trigger_focus"
+        // 原本誤接到 trigger_focus（另一顆完全不同的圖案），跟畫面上篩選出來的
+        // 雙箭頭卡片對不起來；trigger_choice 才是真正的雙箭頭圖示
+        case .choice: "trigger_choice"
+        case .wheel: "trigger_wheel"
         }
     }
 }

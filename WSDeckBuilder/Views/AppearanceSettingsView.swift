@@ -4,6 +4,7 @@ import SwiftUI
 struct AppearanceSettingsView: View {
     @Environment(AppearanceSettings.self) private var appearance
     @Environment(CardDatabase.self) private var database
+    @Environment(OnboardingCoordinator.self) private var onboarding
 
     var body: some View {
         @Bindable var settings = appearance
@@ -40,18 +41,6 @@ struct AppearanceSettingsView: View {
             }
 
             Section {
-                Picker("背景", selection: $settings.background) {
-                    ForEach(BackgroundStyle.allCases) { Text($0.label).tag($0) }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } header: {
-                Text("背景")
-            } footer: {
-                Text("「純黑」在 OLED 螢幕上最省電；「米紙」是護眼的暖色底。")
-            }
-
-            Section {
                 Picker("強調色", selection: $settings.accentMode) {
                     ForEach(AccentMode.allCases) { Text($0.label).tag($0) }
                 }
@@ -77,6 +66,7 @@ struct AppearanceSettingsView: View {
         }
         .navigationTitle("外觀")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { onboarding.notify(.appearance) }
     }
 
     // MARK: - 預覽
@@ -169,7 +159,6 @@ struct AppearanceSettingsView: View {
         appearance.textSize = .standard
         appearance.textWeight = .regular
         appearance.textTone = .standard
-        appearance.background = .system
         appearance.accentMode = .followTitle
         appearance.fixedAccent = .rose
     }

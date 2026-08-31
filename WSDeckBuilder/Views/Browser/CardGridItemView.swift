@@ -13,6 +13,7 @@ struct CardGridItemView: View {
     var onTap: () -> Void
 
     @Environment(\.modelContext) private var context
+    @Environment(OnboardingCoordinator.self) private var onboarding
     @Query private var collection: [CollectionEntry]
 
     private var ownedCount: Int {
@@ -76,11 +77,13 @@ struct CardGridItemView: View {
                     } else if delta > 0 {
                         // ＋預設加入普卡刷版；－從最後一個有牌的刷版扣（§4.4.2）
                         deck.adjust(printingID: card.defaultPrinting.id, by: 1, context: context)
+                        onboarding.notify(.addToDeck)
                     } else {
                         removeOne(from: deck)
                     }
                 }
                 .frame(height: 32)
+                .onboardingAnchor(.addToDeck)
             }
         }
     }

@@ -4,8 +4,9 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(CardDatabase.self) private var database
     @Environment(DataUpdater.self) private var updater
+    @Environment(AnnouncementCenter.self) private var announcements
+    @Environment(OnboardingCoordinator.self) private var onboarding
     @State private var policy = NetworkPolicy.shared
-    @State private var confirmRevert = false
 
     @State private var cacheSize: Int64 = 0
     @State private var cachedCount = 0
@@ -27,14 +28,18 @@ struct SettingsView: View {
                     } label: {
                         Label("外觀", systemImage: "paintpalette")
                     }
+                    .onboardingAnchor(.appearance)
                 } footer: {
                     Text("字體大小與粗細、文字與背景顏色、強調色。")
                 }
                 cardDataSection
+                notificationSection
                 networkSection
                 prefetchSection
                 cacheSection
+                helpSection
             }
+            .clearsGlassTabBar()
             .navigationTitle("設定")
             .task { await refreshCacheInfo() }
         }
@@ -54,20 +59,6 @@ struct SettingsView: View {
             }
 
             updateControls
-
-            if CardDataStore.hasDownloadedData {
-                Button("還原為 App 內建卡表", role: .destructive) {
-                    confirmRevert = true
-                }
-                .confirmationDialog("下載的卡表會被刪除，改用 App 內建的版本。",
-                                    isPresented: $confirmRevert,
-                                    titleVisibility: .visible) {
-                    Button("還原", role: .destructive) {
-                        Task { await updater.revertToBundled(database: database) }
-                    }
-                    Button("取消", role: .cancel) {}
-                }
-            }
         } header: {
             Text("卡表")
         } footer: {
@@ -86,15 +77,6 @@ struct SettingsView: View {
                 ProgressView(value: total > 0 ? Double(done) / Double(total) : 0)
             }
         case .updateAvailable(let pending):
-            ForEach(pending) { item in
-                LabeledContent(item.titleName) {
-                    Text(item.fromVersion == 0
-                         ? "新作品 v\(item.toVersion)"
-                         : "v\(item.fromVersion) → v\(item.toVersion)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.tint)
-                }
-            }
             Button {
                 Task { await updater.performUpdate(pending, database: database) }
             } label: {
@@ -103,7 +85,12 @@ struct SettingsView: View {
             }
         default:
             Button {
-                Task { await updater.check(against: database) }
+                Task {
+                    await updater.check(against: database)
+                    if case .updateAvailable(let pending) = updater.state {
+                        announcements.noteDataUpdates(pending)
+                    }
+                }
             } label: {
                 Label("檢查更新", systemImage: "arrow.triangle.2.circlepath")
             }
@@ -127,6 +114,26 @@ struct SettingsView: View {
             if let checked = updater.lastCheckedAt {
                 Text("上次檢查：\(checked.formatted(date: .abbreviated, time: .shortened))")
             }
+        }
+    }
+
+    // MARK: - 通知
+
+    private var notificationSection: some View {
+        Section {
+            Picker("鈴鐺未讀提示", selection: Binding(
+                get: { announcements.badgeStyle },
+                set: { announcements.badgeStyle = $0 })) {
+                ForEach(NotificationBadgeStyle.allCases) { style in
+                    Text(style.label).tag(style)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } header: {
+            Text("通知")
+        } footer: {
+            Text("有新通知時，圖鑑分頁右上角的鈴鐺顯示紅點或未讀則數。")
         }
     }
 
@@ -230,6 +237,20 @@ struct SettingsView: View {
             Text("圖片快取")
         } footer: {
             Text("卡圖存於本機（不佔 iCloud 備份），看過一次即永久保留。")
+        }
+    }
+
+    // MARK: - 說明
+
+    private var helpSection: some View {
+        Section {
+            Button {
+                onboarding.restart()
+            } label: {
+                Label("幫助", systemImage: "questionmark.circle")
+            }
+        } footer: {
+            Text("忘了怎麼使用嗎？點這裡重新看一次新手教學。")
         }
     }
 

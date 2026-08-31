@@ -20,6 +20,7 @@ struct CardCatalogView: View {
 
     @Environment(CardDatabase.self) private var database
     @Environment(AppearanceSettings.self) private var appearance
+    @Environment(OnboardingCoordinator.self) private var onboarding
     @Query(sort: \Deck.createdAt) private var decks: [Deck]
     @Query private var collection: [CollectionEntry]
     @AppStorage("activeDeckUUID") private var activeDeckUUID: String = ""
@@ -58,11 +59,11 @@ struct CardCatalogView: View {
     /// 作品選單這一層搜尋列篩的對象：作品本身，不是卡片。
     /// 沿用 suggestions(for:) 同一套比對邏輯（含容錯）而不是另外寫一份，
     /// 兩處「猜使用者想找哪個作品」的判斷才不會兜不起來。
-    private var gallerySets: [CardSetMeta] {
+    private var gallerySets: [BrowsableSet] {
         let trimmed = query.keyword.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return database.sets }
+        guard !trimmed.isEmpty else { return database.browsableSets }
         let matchedCodes = Set(database.suggestions(for: trimmed).map(\.titleCode))
-        return database.sets.filter { matchedCodes.contains($0.titleCode) }
+        return database.browsableSets.filter { matchedCodes.contains($0.titleCode) }
     }
 
     private var activeDeck: Deck? {
@@ -88,7 +89,71 @@ struct CardCatalogView: View {
         query = fresh
     }
 
+    // 這條 modifier 鏈原本整串寫在同一個 body 運算式裡，疊了 20 幾層加上幾個
+    // 三元運算，編譯器會逾時型別檢查（"unable to type-check this expression
+    // in reasonable time"）。拆成 body → chrome → effects 三段各自回傳
+    // `some View`，編譯器才能分段推斷，跟拆 toolbar 出去是同一個道理。
     var body: some View {
+        chrome
+            // 滿版半透明疊層，不是系統 sheet——篩選條件一多，sheet 的高度限制
+            // 反而是問題，滿版才有空間讓 chip 換行攤開
+            .fullScreenCover(isPresented: $showFilter) {
+                FilterSheet(query: $query, lockedTitle: pinnedTitle != nil)
+            }
+            .sheet(isPresented: $showDeckQuickView) {
+                if let activeDeck {
+                    ActiveDeckQuickView(deck: activeDeck)
+                }
+            }
+            // 強調色跟著目前瀏覽的作品——拆過彈的話 query.titleCode 是商品代碼
+            // （如 "SFN/S108"），TitlePalette 認的是原本的 titleCode，要轉一手
+            .onChange(of: query.titleCode, initial: true) {
+                let scope = query.titleCode
+                appearance.currentTitleCode = scope.flatMap { s in
+                    database.browsableSets.first { $0.id == s }?.titleCode
+                } ?? scope ?? ""
+            }
+            // 引導教學：點開卡片詳情，等於完成了「查看卡片」這一步
+            .onChange(of: detailCard) { old, new in
+                if old == nil, new != nil { onboarding.notify(.viewCard) }
+            }
+            // 搜尋欄的清除鈕只會清關鍵字，但使用者的意思是「重來」，
+            // 篩選（多半是點建議帶上的）留著會讓結果看起來還是不對
+            .onChange(of: query.keyword) { old, new in
+                guard !isApplyingSuggestion else {
+                    isApplyingSuggestion = false
+                    return
+                }
+                if !old.isEmpty, new.isEmpty, hasVisibleFilters {
+                    withAnimation { resetQuery() }
+                }
+            }
+            // 打字時每個字都重搜會頓；停一下再搜，中途的輸入直接作廢。
+            // task(id:) 會在 id 變動時取消上一個任務，正好是我們要的行為。
+            .task(id: query.keyword) {
+                if !query.keyword.isEmpty {
+                    onboarding.notify(.search)
+                    try? await Task.sleep(for: .milliseconds(180))
+                    guard !Task.isCancelled else { return }
+                }
+                recomputeResults()
+            }
+            // 篩選、持有狀態、資料載入完成都要重算，但這些不需要延遲
+            .onChange(of: query.filterSignature) { recomputeResults() }
+            .onChange(of: collection) { recomputeResults() }
+            .onChange(of: database.cards.count) { recomputeResults() }
+            .sheet(item: $detailCard) { card in
+                // 帶著搜尋結果進去，詳情頁就能左右滑看下一張
+                CardDetailSheet(card: card, siblings: results, deck: activeDeck)
+            }
+            .overlay {
+                if !showsGallery, results.isEmpty {
+                    ContentUnavailableView.search
+                }
+            }
+    }
+
+    private var chrome: some View {
         Group {
             if showsGallery {
                 TitleGalleryView(sets: gallerySets, totalCount: database.cards.count,
@@ -102,81 +167,56 @@ struct CardCatalogView: View {
         .navigationTitle(screenTitle)
         // 大標題會在搜尋列上方留一整塊空白，卡圖比標題重要，改用 inline
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $query.keyword, prompt: searchPrompt)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    showFilter = true
-                } label: {
-                    Image(systemName: query.hasActiveFilters
-                          ? "line.3.horizontal.decrease.circle.fill"
-                          : "line.3.horizontal.decrease.circle")
-                }
-                if !showsGallery {
-                    Button {
-                        usesGrid.toggle()
-                    } label: {
-                        Image(systemName: usesGrid ? "list.bullet" : "square.grid.3x3")
-                    }
+        // 明確指定 .navigationBarDrawer(.always)——自訂的玻璃分頁列不是真的
+        // TabView，跟系統之間少了那層安全區/捲動協調，searchable 用預設
+        // placement 猜測時有時會判斷成「收進工具列的搜尋鈕」而不是常駐搜尋列
+        .searchable(text: $query.keyword,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: searchPrompt)
+        .toolbar { catalogToolbar }
+        .safeAreaInset(edge: .top, spacing: 0) { topBar }
+    }
+
+    @ViewBuilder
+    private var topBar: some View {
+        // 作品選單上沒有卡可以加，這排東西只會擋掉版面
+        if !showsGallery {
+            VStack(spacing: 0) {
+                ActiveDeckPicker(decks: decks, activeDeckUUID: $activeDeckUUID)
+                activeFilterBar
+                suggestionBar
+                if let activeDeck {
+                    ActiveDeckStripView(deck: activeDeck) { showDeckQuickView = true }
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            // 作品選單上沒有卡可以加，這排東西只會擋掉版面
+    }
+
+    // 拆成獨立的 @ToolbarContentBuilder——原本整段寫在 body 的 .toolbar {} 裡，
+    // 疊了太多 modifier 跟三元運算，編譯器會逾時型別檢查（"unable to type-check
+    // this expression in reasonable time"），拆開讓編譯器分開推斷才過得了
+    @ToolbarContentBuilder
+    private var catalogToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                showFilter = true
+                onboarding.notify(.filter)
+            } label: {
+                Image(systemName: query.hasActiveFilters
+                      ? "line.3.horizontal.decrease.circle.fill"
+                      : "line.3.horizontal.decrease.circle")
+            }
+            .onboardingAnchor(.filter)
             if !showsGallery {
-                VStack(spacing: 0) {
-                    ActiveDeckPicker(decks: decks, activeDeckUUID: $activeDeckUUID)
-                    activeFilterBar
-                    suggestionBar
-                    if let activeDeck {
-                        ActiveDeckStripView(deck: activeDeck) { showDeckQuickView = true }
-                    }
+                Button {
+                    usesGrid.toggle()
+                } label: {
+                    Image(systemName: usesGrid ? "list.bullet" : "square.grid.3x3")
                 }
             }
-        }
-        .sheet(isPresented: $showFilter) {
-            FilterSheet(query: $query, lockedTitle: pinnedTitle != nil)
-        }
-        .sheet(isPresented: $showDeckQuickView) {
-            if let activeDeck {
-                ActiveDeckQuickView(deck: activeDeck)
-            }
-        }
-        // 強調色跟著目前瀏覽的作品
-        .onChange(of: query.titleCode, initial: true) {
-            appearance.currentTitleCode = query.titleCode ?? ""
-        }
-        // 搜尋欄的清除鈕只會清關鍵字，但使用者的意思是「重來」，
-        // 篩選（多半是點建議帶上的）留著會讓結果看起來還是不對
-        .onChange(of: query.keyword) { old, new in
-            guard !isApplyingSuggestion else {
-                isApplyingSuggestion = false
-                return
-            }
-            if !old.isEmpty, new.isEmpty, hasVisibleFilters {
-                withAnimation { resetQuery() }
-            }
-        }
-        // 打字時每個字都重搜會頓；停一下再搜，中途的輸入直接作廢。
-        // task(id:) 會在 id 變動時取消上一個任務，正好是我們要的行為。
-        .task(id: query.keyword) {
-            if !query.keyword.isEmpty {
-                try? await Task.sleep(for: .milliseconds(180))
-                guard !Task.isCancelled else { return }
-            }
-            recomputeResults()
-        }
-        // 篩選、持有狀態、資料載入完成都要重算，但這些不需要延遲
-        .onChange(of: query.filterSignature) { recomputeResults() }
-        .onChange(of: collection) { recomputeResults() }
-        .onChange(of: database.cards.count) { recomputeResults() }
-        .sheet(item: $detailCard) { card in
-            // 帶著搜尋結果進去，詳情頁就能左右滑看下一張
-            CardDetailSheet(card: card, siblings: results, deck: activeDeck)
-        }
-        .overlay {
-            if !showsGallery, results.isEmpty {
-                ContentUnavailableView.search
+            // 只在最上層（App 預設打開的那一頁）放鈴鐺，鎖進單一作品後就不重複顯示
+            if route == .root {
+                NotificationBellButton()
             }
         }
     }
@@ -186,7 +226,7 @@ struct CardCatalogView: View {
         case .root:
             "圖鑑"
         case .title(let code):
-            database.sets.first { $0.titleCode == code }?.titleNameZH ?? code
+            database.browsableSets.first { $0.id == code }?.displayNameZH ?? code
         case .allCards:
             "全部卡片"
         }
@@ -237,7 +277,7 @@ struct CardCatalogView: View {
     private var filterSummary: String {
         var parts: [String] = []
         if let code = query.titleCode, code != pinnedTitle {
-            parts.append(database.sets.first { $0.titleCode == code }?.titleNameZH ?? code)
+            parts.append(database.browsableSets.first { $0.id == code }?.displayNameZH ?? code)
         }
         if !query.levels.isEmpty {
             parts.append("Lv" + query.levels.sorted().map(String.init).joined(separator: "/"))
@@ -333,8 +373,12 @@ struct CardCatalogView: View {
                 }
             }
             .padding(.horizontal)
-            .padding(.bottom, Spacing.s8)
+            // 純 ScrollView 用 safeAreaInset 加底部淨空會讓整個 ScrollView 卡住滑不動
+            // （原因不明，換成直接加大內容 padding 才是穩定作法）
+            .padding(.bottom, 140)
         }
+        .scrollContentBackground(.hidden)
+        .background(AppSurface.background)
     }
 
     private var list: some View {
@@ -344,5 +388,8 @@ struct CardCatalogView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(AppSurface.background)
+        .clearsGlassTabBar()
     }
 }

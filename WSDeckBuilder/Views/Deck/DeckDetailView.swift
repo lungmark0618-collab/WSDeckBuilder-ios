@@ -59,6 +59,7 @@ struct DeckDetailView: View {
             case .shortage: shortageList
             }
         }
+        .background(AppSurface.background)
         .navigationTitle(deck.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -204,8 +205,12 @@ struct DeckDetailView: View {
                     }
                 }
             }
-            .padding(.bottom, Spacing.s8)
+            // 純 ScrollView 用 safeAreaInset 加底部淨空會讓整個 ScrollView 卡住滑不動
+            // （原因不明，換成直接加大內容 padding 才是穩定作法）
+            .padding(.bottom, 140)
         }
+        .scrollContentBackground(.hidden)
+        .background(AppSurface.background)
         .overlay {
             if deck.entries.isEmpty {
                 ContentUnavailableView("牌組是空的",
@@ -235,6 +240,9 @@ struct DeckDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(AppSurface.background)
+        .clearsGlassTabBar()
         .overlay {
             if deck.entries.isEmpty {
                 ContentUnavailableView("牌組是空的",
@@ -326,6 +334,7 @@ struct DeckDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .clearsGlassTabBar()
         .toolbar {
             if mode == .shortage, !shortages.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {

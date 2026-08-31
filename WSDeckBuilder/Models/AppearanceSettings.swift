@@ -55,7 +55,7 @@ final class AppearanceSettings {
         textSize = TextSize(rawValue: defaults.string(forKey: "ap.textSize") ?? "") ?? .standard
         textWeight = TextWeight(rawValue: defaults.string(forKey: "ap.textWeight") ?? "") ?? .regular
         textTone = TextTone(rawValue: defaults.string(forKey: "ap.textTone") ?? "") ?? .standard
-        background = BackgroundStyle(rawValue: defaults.string(forKey: "ap.background") ?? "") ?? .system
+        background = BackgroundStyle(rawValue: defaults.string(forKey: "ap.background") ?? "") ?? .pureBlack
         accentMode = AccentMode(rawValue: defaults.string(forKey: "ap.accentMode") ?? "") ?? .followTitle
         fixedAccent = AccentPreset(rawValue: defaults.string(forKey: "ap.fixedAccent") ?? "") ?? .rose
     }

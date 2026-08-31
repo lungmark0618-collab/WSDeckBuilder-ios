@@ -22,20 +22,6 @@ enum CardDataStore {
         directory.appendingPathComponent(name)
     }
 
-    /// 還原成內建版本：把下載的檔案全部刪掉
-    static func removeAll() throws {
-        let files = try FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil)
-        for file in files where file.lastPathComponent.hasSuffix("_cards.json") {
-            try FileManager.default.removeItem(at: file)
-        }
-    }
-
-    static var hasDownloadedData: Bool {
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: directory, includingPropertiesForKeys: nil)) ?? []
-        return files.contains { $0.lastPathComponent.hasSuffix("_cards.json") }
-    }
 }
 
 // MARK: - 線上目錄
@@ -49,6 +35,9 @@ struct UpdateManifest: Decodable {
 
     struct SetEntry: Decodable {
         let titleCode: String
+        /// 這部作品第一次出現（本機還沒下載過卡表）時，通知/設定頁要顯示
+        /// 中文名稱只能靠這個——本機資料庫查不到還沒下載過的作品
+        let titleNameZH: String?
         /// 要寫成哪個本機檔名，必須對得上 Bundle 內的檔名才蓋得掉內建版
         let file: String
         let dataVersion: Int
@@ -57,6 +46,7 @@ struct UpdateManifest: Decodable {
 
         enum CodingKeys: String, CodingKey {
             case titleCode = "title_code"
+            case titleNameZH = "title_name_zh"
             case file
             case dataVersion = "data_version"
             case url
@@ -134,9 +124,12 @@ final class DataUpdater {
     // MARK: - 檢查
 
     /// 啟動時靜默呼叫。查不到就沿用本地資料，不跳錯誤打擾（§4.4.8）
+    ///
+    /// 原本設計成「一天查一次」，但這樣使用者得自己手動按「檢查更新」才會
+    /// 看到通知——想要的其實是「開 App 就自動查、有新的話通知自己跳出來」。
+    /// manifest.json 就幾 KB、放在 GitHub raw CDN 後面，每次開 App 都查一次
+    /// 完全負擔得起，沒必要為了省這一點流量犧牲「即時看到通知」。
     func checkSilently(against database: CardDatabase) async {
-        // 一天查一次就夠，不必每次開 App 都連線
-        if let last = lastCheckedAt, Date().timeIntervalSince(last) < 86_400 { return }
         guard NetworkPolicy.shared.allowsAutomaticDownload else { return }
         await check(against: database, silent: true)
     }
@@ -180,7 +173,7 @@ final class DataUpdater {
             let current = local?.dataVersion ?? 0
             guard entry.dataVersion > current else { return nil }
             return Pending(titleCode: entry.titleCode,
-                           titleName: local?.titleNameZH ?? entry.titleCode,
+                           titleName: local?.titleNameZH ?? entry.titleNameZH ?? entry.titleCode,
                            file: entry.file,
                            url: url.absoluteURL,
                            fromVersion: current,
@@ -239,19 +232,6 @@ final class DataUpdater {
             _ = try FileManager.default.replaceItemAt(target, withItemAt: temp)
         } else {
             try FileManager.default.moveItem(at: temp, to: target)
-        }
-    }
-
-    /// 還原成 App 內建的卡表
-    func revertToBundled(database: CardDatabase) async {
-        do {
-            try CardDataStore.removeAll()
-            await database.reload()
-            state = .idle
-            notes = nil
-            lastCheckedAt = nil
-        } catch {
-            state = .failed(Self.message(for: error))
         }
     }
 

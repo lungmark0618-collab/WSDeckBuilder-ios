@@ -33,7 +33,7 @@ enum CardTextRenderer {
 
     private static let markerIcons: [(String, String)] = [
         ("【雙魂】", "trigger_soul"),   // 先比對長字串避免誤切
-        ("【箭頭】", "trigger_focus"),
+        ("【箭頭】", "trigger_choice"),
         ("【開機】", "trigger_standby"),
         ("【木門】", "trigger_salvage"),
         ("【城門】", "trigger_gate"),
@@ -41,7 +41,7 @@ enum CardTextRenderer {
         ("【本】", "trigger_draw"),
         ("【魂】", "trigger_soul"),
         ("【槍】", "trigger_shot"),
-        ("【選】", "trigger_focus"),
+        ("【選】", "trigger_choice"),
         ("【待】", "trigger_standby"),
         ("【扉】", "trigger_salvage"),
         ("【門】", "trigger_gate"),

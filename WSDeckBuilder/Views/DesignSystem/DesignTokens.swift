@@ -19,6 +19,16 @@ enum Spacing {
     static let s32: CGFloat = 32
 }
 
+// MARK: - 介面表面色
+
+enum AppSurface {
+    static let background = Color(red: 0.02, green: 0.02, blue: 0.025)
+    static let panel = Color(red: 0.11, green: 0.11, blue: 0.12)
+    static let panelElevated = Color(red: 0.15, green: 0.15, blue: 0.17)
+    static let hairline = Color.white.opacity(0.10)
+    static let secondaryText = Color(red: 0.66, green: 0.63, blue: 0.70)
+}
+
 // MARK: - 圓角
 
 enum Radius {
@@ -55,6 +65,16 @@ enum ShadowLevel {
 extension View {
     func comfortShadow(_ level: ShadowLevel = .card) -> some View {
         shadow(color: level.color, radius: level.radius, x: 0, y: level.y)
+    }
+
+    /// 浮動玻璃分頁列不佔版面、也不會壓縮安全區，捲動內容自己不知道要
+    /// 留位置給它——直接掛在 RootTabView 外層的 safeAreaInset 又會被
+    /// NavigationStack 擋下來傳不到 List/Form 裡，所以改成每個會捲到底的
+    /// List／Form／ScrollView 自己掛這個，才能保證最後一塊內容不被蓋到。
+    func clearsGlassTabBar() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: 140)
+        }
     }
 }
 

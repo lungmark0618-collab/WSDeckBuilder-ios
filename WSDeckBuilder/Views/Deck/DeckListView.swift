@@ -6,6 +6,7 @@ import SwiftUI
 struct DeckListView: View {
     @Environment(\.modelContext) private var context
     @Environment(CardDatabase.self) private var database
+    @Environment(OnboardingCoordinator.self) private var onboarding
     @Query(sort: \Deck.createdAt) private var decks: [Deck]
     @AppStorage("activeDeckUUID") private var activeDeckUUID: String = ""
 
@@ -52,6 +53,9 @@ struct DeckListView: View {
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(AppSurface.background)
+            .clearsGlassTabBar()
             .navigationTitle("牌組")
             .navigationDestination(for: UUID.self) { uuid in
                 if let deck = decks.first(where: { $0.uuid == uuid }) {
@@ -88,6 +92,7 @@ struct DeckListView: View {
                 } label: {
                     Image(systemName: "plus")
                 }
+                .onboardingAnchor(.createDeck)
             }
             .fileImporter(isPresented: $showFileImporter,
                           allowedContentTypes: [.json, .plainText, .text]) { result in
@@ -122,9 +127,18 @@ struct DeckListView: View {
             }
             .overlay {
                 if decks.isEmpty {
-                    ContentUnavailableView("還沒有牌組",
-                                           systemImage: "square.stack.3d.up.slash",
-                                           description: Text("點右上角＋建立第一副牌組"))
+                    VStack(spacing: Spacing.s16) {
+                        Image(systemName: "square.stack.3d.up.slash")
+                            .font(.system(size: 44, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                        Text("還沒有牌組")
+                            .font(.title3.bold())
+                        Text("點右上角＋建立第一副牌組")
+                            .font(.subheadline)
+                            .foregroundStyle(AppSurface.secondaryText)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppSurface.background)
                 }
             }
             .alert("重新命名", isPresented: .init(
@@ -225,7 +239,7 @@ struct DeckListView: View {
         .background {
             ZStack {
                 // 底色先鋪滿，卡圖載入前後都不會露出空白
-                Color(.secondarySystemBackground)
+                AppSurface.panelElevated
                 CardArtBackdrop(printing: cover, blur: 22, opacity: 1, saturation: 2.1)
                 // 文字那側壓深，右側留亮，白字讀得清楚又保得住卡面色調
                 LinearGradient(stops: [
@@ -235,9 +249,9 @@ struct DeckListView: View {
                 ], startPoint: .leading, endPoint: .trailing)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: Radius.large, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(isActive ? Color.accentColor.opacity(0.9)
                                        : .white.opacity(0.12),
                               lineWidth: isActive ? 2 : 1)
@@ -418,6 +432,7 @@ struct DeckListView: View {
         context.insert(deck)
         try? context.save()
         activeDeckUUID = deck.uuid.uuidString
+        onboarding.notify(.createDeck)
     }
 
     private func delete(_ deck: Deck) {

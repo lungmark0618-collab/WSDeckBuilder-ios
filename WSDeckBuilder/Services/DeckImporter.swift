@@ -24,7 +24,7 @@ enum DeckImporter {
 
         var errorDescription: String? {
             switch self {
-            case .unreadable: "檔案格式無法辨識。請使用本 App 匯出的 JSON 或牌表文字。"
+            case .unreadable: "檔案格式無法辨識。請使用本 App 匯出的 JSON、牌表文字，或每行一張卡號的清單。"
             case .noCards: "內容裡找不到任何卡號。"
             }
         }
@@ -46,6 +46,7 @@ enum DeckImporter {
     static func parse(_ text: String) throws -> Parsed {
         if let parsed = parseJSON(text) { return parsed }
         if let parsed = parseText(text) { return parsed }
+        if let parsed = parseRepeatedIDs(text) { return parsed }
         throw ImportError.unreadable
     }
 
@@ -96,6 +97,26 @@ enum DeckImporter {
         guard !entries.isEmpty else { return nil }
         var parsed = Parsed(name: name)
         parsed.entries = entries
+        return parsed
+    }
+
+    /// 貓罐子等工具匯出的純卡號清單：沒有張數標記，同一張卡有幾張就重複幾行
+    /// （整份文字必須每一行都是卡號，混雜其他格式就交給前面的 parseText 判斷）
+    private static func parseRepeatedIDs(_ text: String) -> Parsed? {
+        let linePattern = try! NSRegularExpression(pattern: #"^[A-Za-z0-9]+/[A-Za-z0-9]+-[A-Za-z0-9]+$"#)
+        var counts: [String: Int] = [:]
+        var order: [String] = []
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty else { continue }
+            let range = NSRange(line.startIndex..., in: line)
+            guard linePattern.firstMatch(in: line, range: range) != nil else { return nil }
+            if counts[line] == nil { order.append(line) }
+            counts[line, default: 0] += 1
+        }
+        guard !counts.isEmpty else { return nil }
+        var parsed = Parsed(name: "匯入的牌組")
+        parsed.entries = order.map { ($0, counts[$0]!) }
         return parsed
     }
 
