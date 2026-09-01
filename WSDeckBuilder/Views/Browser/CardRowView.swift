@@ -76,6 +76,7 @@ struct CardRowView: View {
         case .green: .green
         case .red: .red
         case .blue: .blue
+        case nil: .gray  // 極少數 SEC 隱藏卡官方沒公開顏色
         }
     }
 }

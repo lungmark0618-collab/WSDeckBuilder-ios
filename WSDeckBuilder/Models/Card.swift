@@ -7,7 +7,8 @@ struct Card: Decodable, Identifiable, Hashable {
     let nameJP: String
     let nameZH: String
     let cardType: CardType
-    let color: CardColor
+    /// 極少數 SEC（隱藏）卡官方根本沒公開內容，連顏色都是 null，所以這裡是 optional
+    let color: CardColor?
     let level: Int?                 // CX 為 nil
     let cost: Int?                  // CX 為 nil
     let power: Int?                 // 事件/CX 為 nil
@@ -59,7 +60,7 @@ struct Card: Decodable, Identifiable, Hashable {
         nameJP = try c.decode(String.self, forKey: .nameJP)
         nameZH = try c.decode(String.self, forKey: .nameZH)
         cardType = try c.decode(CardType.self, forKey: .cardType)
-        color = try c.decode(CardColor.self, forKey: .color)
+        color = try c.decodeIfPresent(CardColor.self, forKey: .color)
         level = try c.decodeIfPresent(Int.self, forKey: .level)
         cost = try c.decodeIfPresent(Int.self, forKey: .cost)
         power = try c.decodeIfPresent(Int.self, forKey: .power)

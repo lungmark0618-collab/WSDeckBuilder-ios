@@ -60,6 +60,7 @@ struct DeckListView: View {
             .navigationDestination(for: UUID.self) { uuid in
                 if let deck = decks.first(where: { $0.uuid == uuid }) {
                     DeckDetailView(deck: deck)
+                        .swipeToGoBack()
                 }
             }
             .toolbar {
@@ -291,8 +292,8 @@ struct DeckListView: View {
     private func colorBar(for deck: Deck, total: Int) -> some View {
         var counts: [CardColor: Int] = [:]
         for entry in deck.entries {
-            if let card = database.card(forPrinting: entry.printingID) {
-                counts[card.color, default: 0] += entry.count
+            if let card = database.card(forPrinting: entry.printingID), let color = card.color {
+                counts[color, default: 0] += entry.count
             }
         }
         let deckSize = max(DeckValidator.deckSize, 1)

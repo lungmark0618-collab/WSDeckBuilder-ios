@@ -5,6 +5,7 @@ struct RootTabView: View {
 
     @Environment(CardDatabase.self) private var database
     @Environment(OnboardingCoordinator.self) private var onboarding
+    @Environment(DeckImportCoordinator.self) private var deckImport
     @State private var selectedTab: Tab = .catalog
 
     private let tabs: [GlassTabBarItem<Tab>] = [
@@ -54,6 +55,22 @@ struct RootTabView: View {
                     selectedTab = tab
                 }
             }
+        }
+        // 朋友用系統相機掃分享出去的牌組 QR 時，App 靠 wsdeck:// 連結被喚起，
+        // 不管當下停在哪個分頁都要能跳出預覽，所以掛在根層而不是牌組分頁裡
+        .sheet(isPresented: Binding(
+            get: { deckImport.pending != nil },
+            set: { if !$0 { deckImport.pending = nil } })) {
+            if let parsed = deckImport.pending {
+                DeckImportPreviewSheet(parsed: parsed) { deckImport.pending = nil }
+            }
+        }
+        .alert("無法辨識連結", isPresented: Binding(
+            get: { deckImport.errorMessage != nil },
+            set: { if !$0 { deckImport.errorMessage = nil } })) {
+            Button("好") {}
+        } message: {
+            Text(deckImport.errorMessage ?? "")
         }
     }
 

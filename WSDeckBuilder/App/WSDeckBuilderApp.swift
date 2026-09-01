@@ -9,6 +9,7 @@ struct WSDeckBuilderApp: App {
     @State private var announcements = AnnouncementCenter()
     @State private var onboarding = OnboardingCoordinator()
     @State private var favorites = FavoriteTitlesStore()
+    @State private var deckImport = DeckImportCoordinator()
     // 只有冷啟動才會跑 .task，使用者切去別的 App 再切回來（沒有真的把 App
     // 滑掉重開）並不會重新觸發——這才是「還是要手動按檢查更新」的真正原因，
     // 要另外盯 scenePhase 回到前景才會再查一次
@@ -23,12 +24,16 @@ struct WSDeckBuilderApp: App {
                 .environment(announcements)
                 .environment(onboarding)
                 .environment(favorites)
+                .environment(deckImport)
                 .appAppearance(appearance)
                 .task {
                     await database.load()
                     favorites.migrate(using: database)
                     // 查更新絕不擋開場：卡表載完、畫面已經能用了才在背景問一次
                     await checkForUpdates()
+                }
+                .onOpenURL { url in
+                    deckImport.handle(url: url)
                 }
                 .onChange(of: scenePhase) { _, newPhase in
                     guard newPhase == .active, !database.isLoading, !database.cards.isEmpty else { return }

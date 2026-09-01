@@ -25,6 +25,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink {
                         AppearanceSettingsView()
+                            .swipeToGoBack()
                     } label: {
                         Label("外觀", systemImage: "paintpalette")
                     }

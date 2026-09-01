@@ -218,7 +218,7 @@ struct CardDetailContent: View {
             }
             HStack(spacing: 6) {
                 tag(card.cardType.label)
-                tag(card.color.label)
+                if let color = card.color { tag(color.label) }
                 tag(selectedPrinting.rarity)
                 tag(card.source.label)
                 ForEach(card.traitsZH, id: \.self) { trait in

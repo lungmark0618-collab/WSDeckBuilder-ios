@@ -9,6 +9,7 @@ struct CardBrowserView: View {
                 // 只在根層宣告一次；被推進去的畫面裡沒有 NavigationLink
                 .navigationDestination(for: CatalogRoute.self) { route in
                     CardCatalogView(route: route)
+                        .swipeToGoBack()
                 }
         }
     }

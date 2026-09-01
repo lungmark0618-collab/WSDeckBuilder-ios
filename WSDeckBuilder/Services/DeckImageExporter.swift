@@ -14,8 +14,22 @@ enum DeckImageExporter {
     ///     WSD1|牌組名|BD/W54-001:4;BD/W54-002:3
     enum Payload {
         static let prefix = "WSD1"
+        /// 包成 URL 而不是丟純文字進 QR：系統相機掃到純文字只會顯示文字，
+        /// 掃到看得懂的網址才會跳「用『WS 牌組管理器』打開」，這樣朋友不用
+        /// 特地開這個 App 的掃描功能，直接用內建相機掃就能跳轉預覽匯入。
+        /// scheme 要跟 Info.plist 的 CFBundleURLTypes 對得上。
+        static let urlScheme = "wsdeck"
+        static let urlHost = "import"
 
         static func encode(deck: Deck) -> String {
+            var components = URLComponents()
+            components.scheme = urlScheme
+            components.host = urlHost
+            components.queryItems = [URLQueryItem(name: "d", value: encodeRaw(deck: deck))]
+            return components.url?.absoluteString ?? encodeRaw(deck: deck)
+        }
+
+        private static func encodeRaw(deck: Deck) -> String {
             let entries = deck.entries
                 .sorted { $0.printingID < $1.printingID }
                 .map { "\($0.printingID):\($0.count)" }
@@ -27,8 +41,19 @@ enum DeckImageExporter {
             return "\(prefix)|\(safeName)|\(entries)"
         }
 
-        /// 回傳 nil 表示不是本 App 的載荷，交給其他解析器去試
+        /// 回傳 nil 表示不是本 App 的載荷，交給其他解析器去試。吃兩種格式：
+        /// 新的 wsdeck://import?d=... 網址，跟舊版直接掃圖片時可能還留著的
+        /// 純文字格式（在 App 內用相簿選圖那條路還是會遇到）。
         static func decode(_ text: String) -> DeckImporter.Parsed? {
+            if let url = URL(string: text), url.scheme == urlScheme, url.host == urlHost,
+               let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+               let raw = comps.queryItems?.first(where: { $0.name == "d" })?.value {
+                return decodeRaw(raw)
+            }
+            return decodeRaw(text)
+        }
+
+        private static func decodeRaw(_ text: String) -> DeckImporter.Parsed? {
             let parts = text.split(separator: "|", maxSplits: 2,
                                    omittingEmptySubsequences: false)
             guard parts.count == 3, parts[0] == prefix else { return nil }

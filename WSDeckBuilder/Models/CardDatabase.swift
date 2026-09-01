@@ -296,7 +296,8 @@ final class CardDatabase {
             if ta != tb { return ta < tb }
             let la = a.level ?? 99, lb = b.level ?? 99
             if la != lb { return la < lb }
-            let ca = colorOrder[a.color] ?? 9, cb = colorOrder[b.color] ?? 9
+            let ca = a.color.flatMap { colorOrder[$0] } ?? 9
+            let cb = b.color.flatMap { colorOrder[$0] } ?? 9
             if ca != cb { return ca < cb }
             return a.id < b.id
         }
@@ -370,7 +371,9 @@ final class CardDatabase {
             if !query.levels.isEmpty {
                 guard let level = card.level, query.levels.contains(level) else { return false }
             }
-            if !query.colors.isEmpty, !query.colors.contains(card.color) { return false }
+            if !query.colors.isEmpty {
+                guard let color = card.color, query.colors.contains(color) else { return false }
+            }
             if !query.types.isEmpty, !query.types.contains(card.cardType) { return false }
             if !query.triggers.isEmpty {
                 guard let trigger = card.trigger, query.triggers.contains(trigger) else { return false }
