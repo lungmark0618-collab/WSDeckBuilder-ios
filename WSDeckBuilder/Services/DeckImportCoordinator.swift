@@ -12,8 +12,15 @@ final class DeckImportCoordinator {
     var errorMessage: String?
 
     func handle(url: URL) {
-        guard let parsed = DeckImageExporter.Payload.decode(url.absoluteString) else {
-            errorMessage = "這個連結不是本 App 的牌組分享連結。"
+        handle(scannedText: url.absoluteString, notFoundMessage: "這個連結不是本 App 的牌組分享連結。")
+    }
+
+    /// App 內建即時相機掃描用：鏡頭掃到的文字可能是新的 wsdeck:// 連結，
+    /// 也可能是舊版直接編碼的純文字，Payload.decode 兩種都吃
+    func handle(scannedText text: String,
+               notFoundMessage: String = "掃到的內容不是本 App 的牌組分享資料。") {
+        guard let parsed = DeckImageExporter.Payload.decode(text) else {
+            errorMessage = notFoundMessage
             return
         }
         pending = parsed

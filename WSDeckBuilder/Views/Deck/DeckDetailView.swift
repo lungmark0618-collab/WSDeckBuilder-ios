@@ -19,6 +19,7 @@ struct DeckDetailView: View {
     /// 出好的牌組圖片；有值就跳分享面板
     @State private var deckImageURL: URL?
     @State private var isRenderingImage = false
+    @State private var showQRPresent = false
 
     @Query private var collection: [CollectionEntry]
 
@@ -99,6 +100,9 @@ struct DeckDetailView: View {
         }
         .sheet(item: $deckImageURL) { url in
             ShareSheet(items: [url])
+        }
+        .sheet(isPresented: $showQRPresent) {
+            DeckQRPresentView(deck: deck)
         }
     }
 
@@ -435,6 +439,14 @@ struct DeckDetailView: View {
                     isPickingCover = true
                 } label: {
                     Label("選擇封面", systemImage: "photo.badge.checkmark")
+                }
+                .disabled(deck.entries.isEmpty)
+            }
+            Section {
+                Button {
+                    showQRPresent = true
+                } label: {
+                    Label("出示 QR 給朋友掃", systemImage: "qrcode")
                 }
                 .disabled(deck.entries.isEmpty)
             }

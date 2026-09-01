@@ -21,8 +21,19 @@ struct DeckImportPreviewSheet: View {
             List {
                 Section {
                     ForEach(parsed.entries, id: \.printingID) { entry in
-                        HStack {
-                            Text(database.card(forPrinting: entry.printingID)?.nameZH ?? entry.printingID)
+                        let card = database.card(forPrinting: entry.printingID)
+                        let printing = database.printing(id: entry.printingID) ?? card?.defaultPrinting
+                        HStack(spacing: Spacing.s12) {
+                            if let printing, let card {
+                                CardImageView(printing: printing, cardName: card.nameZH)
+                                    .frame(width: 40, height: 56)
+                                    .clipShape(RoundedRectangle(cornerRadius: Radius.sharp))
+                            } else {
+                                RoundedRectangle(cornerRadius: Radius.sharp)
+                                    .fill(.quaternary)
+                                    .frame(width: 40, height: 56)
+                            }
+                            Text(card?.nameZH ?? entry.printingID)
                                 .lineLimit(1)
                             Spacer(minLength: Spacing.s8)
                             Text("×\(entry.count)")

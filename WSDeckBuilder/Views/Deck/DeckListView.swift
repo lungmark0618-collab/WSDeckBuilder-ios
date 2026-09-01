@@ -21,6 +21,7 @@ struct DeckListView: View {
     @State private var importError: String?
     /// 從相簿挑的牌組圖片，掃圖上的 QR 匯入
     @State private var showPhotoPicker = false
+    @State private var showQRScanner = false
     @State private var pickedImageItem: PhotosPickerItem?
 
     var body: some View {
@@ -72,6 +73,11 @@ struct DeckListView: View {
                         Label("新增空牌組", systemImage: "plus")
                     }
                     Divider()
+                    Button {
+                        showQRScanner = true
+                    } label: {
+                        Label("開啟相機掃描", systemImage: "camera.viewfinder")
+                    }
                     // PhotosPicker 直接放在 Menu 裡按了不會彈出，
                     // 要由選單設旗標、picker 掛在畫面上才會出現
                     Button {
@@ -100,6 +106,7 @@ struct DeckListView: View {
                 handleFileImport(result)
             }
             .sheet(isPresented: $showPasteSheet) { pasteSheet }
+            .fullScreenCover(isPresented: $showQRScanner) { DeckQRScannerSheet() }
             .photosPicker(isPresented: $showPhotoPicker,
                           selection: $pickedImageItem, matching: .images)
             .task(id: pickedImageItem) { await importPickedImage() }
