@@ -1,14 +1,16 @@
 import SwiftUI
 
 struct RootTabView: View {
-    enum Tab { case catalog, deck, settings }
+    enum Tab { case home, catalog, deck, settings }
 
     @Environment(CardDatabase.self) private var database
     @Environment(OnboardingCoordinator.self) private var onboarding
     @Environment(DeckImportCoordinator.self) private var deckImport
-    @State private var selectedTab: Tab = .catalog
+    // 使用者要求首頁（官網公告）取代圖鑑成為開場畫面
+    @State private var selectedTab: Tab = .home
 
     private let tabs: [GlassTabBarItem<Tab>] = [
+        .init(id: .home, title: "首頁", systemImage: "house.fill"),
         .init(id: .catalog, title: "圖鑑", systemImage: "magnifyingglass"),
         .init(id: .deck, title: "牌組", systemImage: "books.vertical.fill"),
         .init(id: .settings, title: "設定", systemImage: "gearshape.fill")
@@ -18,6 +20,8 @@ struct RootTabView: View {
         ZStack(alignment: .bottom) {
             Group {
                 switch selectedTab {
+                case .home:
+                    HomeView()
                 case .catalog:
                     CardBrowserView()
                 case .deck:
