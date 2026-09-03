@@ -11,6 +11,7 @@ struct WSDeckBuilderApp: App {
     @State private var favorites = FavoriteTitlesStore()
     @State private var deckImport = DeckImportCoordinator()
     @State private var wsNews = WSNewsService()
+    @State private var waveNames = WaveNameService()
     // 只有冷啟動才會跑 .task，使用者切去別的 App 再切回來（沒有真的把 App
     // 滑掉重開）並不會重新觸發——這才是「還是要手動按檢查更新」的真正原因，
     // 要另外盯 scenePhase 回到前景才會再查一次
@@ -27,12 +28,17 @@ struct WSDeckBuilderApp: App {
                 .environment(favorites)
                 .environment(deckImport)
                 .environment(wsNews)
+                .environment(waveNames)
                 .appAppearance(appearance)
                 .task {
-                    await database.load()
+                    await database.load(waveNameOverrides: waveNames.labels)
                     favorites.migrate(using: database)
                     // 查更新絕不擋開場：卡表載完、畫面已經能用了才在背景問一次
                     await checkForUpdates()
+                    // 官方彈次標籤跟卡表一樣背景查新版，有變才重建圖鑑分類
+                    if await waveNames.refresh() {
+                        database.applyWaveNameOverrides(waveNames.labels)
+                    }
                 }
                 .onOpenURL { url in
                     deckImport.handle(url: url)

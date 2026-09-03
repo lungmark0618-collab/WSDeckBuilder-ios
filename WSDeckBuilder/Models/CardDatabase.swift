@@ -14,9 +14,9 @@ struct BrowsableSet: Identifiable, Hashable {
     let cardCount: Int
     /// 原始商品代碼（如 "SFN/S108"），拆彈的作品才有值，圖鑑卡片右下角當輔助資訊顯示
     let productCode: String?
-    /// nil＝沒拆彈，顯示原本作品名；有值＝顯示「作品名 第X彈」。順序是拿商品代碼
-    /// 裡的數字排的，不保證等於官方實際發售順序（見 docs/series_breakdown_report.md
-    /// 的提醒），使用者要求先用這個顯示，之後有錯再個別修正
+    /// nil＝沒拆彈，顯示原本作品名；有值＝顯示「作品名 標籤」。標籤優先用
+    /// wave_names.json 提供的官方商品名稱（如「Vol.2」「新装版」），該系列
+    /// 官方資料還不夠乾淨時才退回舊的「第一彈/第二彈」數字猜測法
     let waveLabel: String?
 
     var displayNameZH: String {
@@ -42,6 +42,8 @@ final class CardDatabase {
     private var relationIndex: [String: [CardRelation]] = [:]  // 卡片 → 關聯卡片
     /// 拆過彈的作品才會出現在這裡，篩選/收藏用的 id 是不是「商品代碼」靠這個判斷
     private var productCodes: Set<String> = []
+    /// productCode → 官方彈次標籤，來自 WaveNameService；重建 browsableSets 時要用
+    private var waveNameOverrides: [String: String] = [:]
     /// 全部特徵（供 FilterSheet 列舉）
     private(set) var allTraits: [String] = []
 
@@ -59,10 +61,24 @@ final class CardDatabase {
     }
 
     /// 六百多萬位元組的 JSON 在主執行緒解會卡住畫面數秒，丟到背景做。
+    /// `waveNameOverrides` 是啟動時已經有的官方彈次標籤快取（見 WaveNameService），
+    /// 這樣圖鑑一開始建立就是官方名稱，不用等網路查完才從數字猜測法換過來
     @MainActor
-    func load() async {
+    func load(waveNameOverrides: [String: String] = [:]) async {
         guard !isLoading, cards.isEmpty else { return }
+        self.waveNameOverrides = waveNameOverrides
         await rebuild()
+    }
+
+    /// WaveNameService 背景抓到新版官方彈次標籤時呼叫，只重建 browsableSets，
+    /// 不用重新解一次整份卡表 JSON
+    @MainActor
+    func applyWaveNameOverrides(_ overrides: [String: String]) {
+        guard !cards.isEmpty else { return }
+        waveNameOverrides = overrides
+        (browsableSets, productCodes) = Self.buildBrowsableSets(
+            sets: sets, cards: cards, titleByCardID: titleByCardID,
+            waveNameOverrides: overrides)
     }
 
     /// 線上更新換掉檔案後重讀。牌組只存卡號，不需要搬遷（§4.4.8）
@@ -76,7 +92,8 @@ final class CardDatabase {
     private func rebuild() async {
         isLoading = true
         defer { isLoading = false }
-        let work = Task.detached(priority: .userInitiated) { Self.buildSnapshot() }
+        let overrides = waveNameOverrides
+        let work = Task.detached(priority: .userInitiated) { Self.buildSnapshot(waveNameOverrides: overrides) }
         switch await work.value {
         case .success(let snapshot):
             cards = snapshot.cards
@@ -115,7 +132,7 @@ final class CardDatabase {
         return byName.values.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
-    private static func buildSnapshot() -> LoadOutcome {
+    private static func buildSnapshot(waveNameOverrides: [String: String]) -> LoadOutcome {
         let urls = dataFileURLs()
         guard !urls.isEmpty else {
             return .failure("找不到卡片資料檔（*_cards.json）")
@@ -149,14 +166,16 @@ final class CardDatabase {
         snapshot.allTraits = Array(Set(snapshot.cards.flatMap(\.traitsZH))).sorted()
         snapshot.relationIndex = buildRelations(snapshot.cards)
         (snapshot.browsableSets, snapshot.productCodes) = buildBrowsableSets(
-            sets: snapshot.sets, cards: snapshot.cards, titleByCardID: snapshot.titleByCardID)
+            sets: snapshot.sets, cards: snapshot.cards, titleByCardID: snapshot.titleByCardID,
+            waveNameOverrides: waveNameOverrides)
         return .success(snapshot)
     }
 
     /// 同系列橫跨多個商品代碼（如「葬送的芙莉蓮」S108/S128/S136）的作品拆成
     /// 好幾個瀏覽單位；只有 1 個代碼的作品維持原樣，用 titleCode 當 id
     private static func buildBrowsableSets(
-        sets: [CardSetMeta], cards: [Card], titleByCardID: [String: String]
+        sets: [CardSetMeta], cards: [Card], titleByCardID: [String: String],
+        waveNameOverrides: [String: String]
     ) -> ([BrowsableSet], Set<String>) {
         var cardsByTitle: [String: [Card]] = [:]
         for card in cards {
@@ -173,17 +192,33 @@ final class CardDatabase {
                     titleNameZH: meta.titleNameZH, titleNameJP: meta.titleNameJP,
                     cardCount: titleCards.count, productCode: nil, waveLabel: nil))
             } else {
-                // 依商品代碼裡的數字排序（如 S108 < S128 < S136）當作發售順序的推測依據
+                // 依商品代碼裡的數字排序（如 S108 < S128 < S136）當顯示順序
                 let ordered = codes.sorted {
                     (numericSuffix($0), $0) < (numericSuffix($1), $1)
                 }
+                // 官方標籤要整個系列每一彈都查得到才採用（見 make_wave_names.py
+                // 的產生規則），免得同系列一部分用官方名稱、一部分用猜的
+                let officialLabels: [String: String]? = {
+                    var found: [String: String] = [:]
+                    for code in ordered {
+                        guard let label = waveNameOverrides[code] else { return nil }
+                        found[code] = label
+                    }
+                    return found
+                }()
                 for (index, code) in ordered.enumerated() {
                     let count = titleCards.lazy.filter { $0.productCode == code }.count
+                    let label: String?
+                    if let officialLabels {
+                        let raw = officialLabels[code] ?? ""
+                        label = raw.isEmpty ? nil : raw
+                    } else {
+                        label = waveLabel(for: index + 1)
+                    }
                     result.append(BrowsableSet(
                         id: code, titleCode: meta.titleCode,
                         titleNameZH: meta.titleNameZH, titleNameJP: meta.titleNameJP,
-                        cardCount: count, productCode: code,
-                        waveLabel: waveLabel(for: index + 1)))
+                        cardCount: count, productCode: code, waveLabel: label))
                     productCodes.insert(code)
                 }
             }
