@@ -4,6 +4,9 @@ import SwiftUI
 /// 取代原本開場就是圖鑑的安排——這是使用者主動要求的首頁。
 struct HomeView: View {
     @Environment(WSNewsService.self) private var news
+    // 點公告先看我們整理過的重點，不是直接跳出 App 到瀏覽器——
+    // 有興趣看完整內容的人，詳情頁裡還有官網連結
+    @State private var selectedItem: WSNewsItem?
 
     var body: some View {
         NavigationStack {
@@ -24,7 +27,9 @@ struct HomeView: View {
                                     .padding(.horizontal, Spacing.s4)
                             }
                             ForEach(news.items) { item in
-                                Link(destination: URL(string: item.url) ?? URL(string: "https://ws-tcg.com")!) {
+                                Button {
+                                    selectedItem = item
+                                } label: {
                                     row(item)
                                 }
                                 .buttonStyle(.plain)
@@ -47,6 +52,9 @@ struct HomeView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     NotificationBellButton()
                 }
+            }
+            .sheet(item: $selectedItem) { item in
+                NewsDetailSheet(item: item)
             }
         }
     }

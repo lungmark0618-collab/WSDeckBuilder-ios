@@ -10,6 +10,11 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
     let titleZH: String?
     let url: String
     let source: String        // "official" | "manual"
+    /// 商品公告才有的規格重點（發售日、售價、卡片種類數），從官網商品頁的
+    /// 規格表抓來的事實資訊，不是公告全文的翻譯——見 WSDeckBuilder-data
+    /// 的 tools/enrich_ws_news.py。沒有值就代表這則公告沒有結構化規格可抓
+    /// （規則更新、賽事公告等），詳情頁只會顯示標題跟官網連結
+    let highlightsZH: [String]
 
     var id: String { "\(date)-\(titleJP)-\(url)" }
     /// 有中文說明就顯示中文，沒有就顯示官方日文原文——不擅自翻譯，只顯示有把握的內容
@@ -19,6 +24,29 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
         case date, categories, url, source
         case titleJP = "title_jp"
         case titleZH = "title_zh"
+        case highlightsZH = "highlights_zh"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(String.self, forKey: .date)
+        categories = try c.decode([String].self, forKey: .categories)
+        titleJP = try c.decode(String.self, forKey: .titleJP)
+        titleZH = try c.decodeIfPresent(String.self, forKey: .titleZH)
+        url = try c.decode(String.self, forKey: .url)
+        source = try c.decode(String.self, forKey: .source)
+        highlightsZH = try c.decodeIfPresent([String].self, forKey: .highlightsZH) ?? []
+    }
+
+    init(date: String, categories: [String], titleJP: String, titleZH: String?,
+         url: String, source: String, highlightsZH: [String] = []) {
+        self.date = date
+        self.categories = categories
+        self.titleJP = titleJP
+        self.titleZH = titleZH
+        self.url = url
+        self.source = source
+        self.highlightsZH = highlightsZH
     }
 }
 
