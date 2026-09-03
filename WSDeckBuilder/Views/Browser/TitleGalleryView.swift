@@ -99,7 +99,7 @@ struct TitleGalleryView: View {
         let color = TitlePalette.accent(for: set.titleCode)
         return VStack(alignment: .leading, spacing: Spacing.s4) {
             HStack(alignment: .top) {
-                Text(set.displayNameZH)
+                Text(set.titleNameZH)
                     .font(.headline)
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
@@ -117,10 +117,23 @@ struct TitleGalleryView: View {
                 .buttonStyle(.plain)
                 .offset(x: Spacing.s8, y: -Spacing.s8)
             }
-            Text(set.titleNameJP)
-                .font(.caption2)
-                .lineLimit(1)
-                .opacity(0.85)
+            HStack(spacing: Spacing.s4) {
+                Text(set.titleNameJP)
+                    .font(.caption2)
+                    .lineLimit(1)
+                    .opacity(0.85)
+                // 拆彈的官方彈次標籤（如「Vol.2」）獨立成小徽章，不跟標題文字
+                // 擠在一起——之前直接接在標題後面，長一點的官方名稱會很難掃視
+                if let wave = set.waveLabel {
+                    Text(wave)
+                        .font(.caption2.weight(.bold))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(.white.opacity(0.22), in: Capsule())
+                }
+            }
             Spacer(minLength: Spacing.s4 + 2)
             HStack(alignment: .firstTextBaseline) {
                 Text(set.productCode ?? set.titleCode)
