@@ -24,6 +24,7 @@ struct HomeView: View {
                                     selectedItem = $0
                                 }
                                 .padding(.top, Spacing.s8)
+                                .onboardingAnchor(.homeIntro)
                             }
                             LazyVStack(spacing: Spacing.s12) {
                                 if let errorMessage = news.errorMessage {

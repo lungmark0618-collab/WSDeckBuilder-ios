@@ -9,6 +9,7 @@ import SwiftUI
 enum OnboardingStep: Int, CaseIterable {
     /// 純招呼語，不指任何元件、不算進「N / 總數」的步驟計數裡
     case welcome
+    case homeIntro
     case search
     case filter
     case notifications
@@ -20,6 +21,7 @@ enum OnboardingStep: Int, CaseIterable {
     var title: String {
         switch self {
         case .welcome: "歡迎使用"
+        case .homeIntro: "首頁公告"
         case .search: "搜尋卡片"
         case .filter: "篩選條件"
         case .notifications: "通知"
@@ -33,6 +35,7 @@ enum OnboardingStep: Int, CaseIterable {
     var body: String {
         switch self {
         case .welcome: "歡迎使用本程式，接下來我會教你如何使用這些功能。"
+        case .homeIntro: "上面可以左右滑動看最新商品，下面是官方公告，點進去可以看我們整理過的重點再決定要不要去官網看完整內容。"
         case .search: "在上面的搜尋列輸入卡號、卡名或能力文字，試著打「hololive」看看。"
         case .filter: "點篩選，可以用等級、顏色、種類縮小範圍。"
         case .notifications: "開發者的公告和卡表更新，都會在這裡提醒你。"
@@ -47,6 +50,7 @@ enum OnboardingStep: Int, CaseIterable {
     var tab: RootTabView.Tab? {
         switch self {
         case .welcome: nil
+        case .homeIntro: .home
         case .search, .filter, .notifications, .viewCard, .addToDeck: .catalog
         case .createDeck: .deck
         case .appearance: .settings
