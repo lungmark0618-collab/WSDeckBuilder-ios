@@ -15,6 +15,8 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
     /// 的 tools/enrich_ws_news.py。沒有值就代表這則公告沒有結構化規格可抓
     /// （規則更新、賽事公告等），詳情頁只會顯示標題跟官網連結
     let highlightsZH: [String]
+    /// 首頁輪播用的縮圖，不是每則都有——沒配圖的公告就不會出現在輪播裡
+    let imageURL: String?
 
     var id: String { "\(date)-\(titleJP)-\(url)" }
     /// 有中文說明就顯示中文，沒有就顯示官方日文原文——不擅自翻譯，只顯示有把握的內容
@@ -25,6 +27,7 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
         case titleJP = "title_jp"
         case titleZH = "title_zh"
         case highlightsZH = "highlights_zh"
+        case imageURL = "image_url"
     }
 
     init(from decoder: Decoder) throws {
@@ -36,10 +39,11 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
         url = try c.decode(String.self, forKey: .url)
         source = try c.decode(String.self, forKey: .source)
         highlightsZH = try c.decodeIfPresent([String].self, forKey: .highlightsZH) ?? []
+        imageURL = try c.decodeIfPresent(String.self, forKey: .imageURL)
     }
 
     init(date: String, categories: [String], titleJP: String, titleZH: String?,
-         url: String, source: String, highlightsZH: [String] = []) {
+         url: String, source: String, highlightsZH: [String] = [], imageURL: String? = nil) {
         self.date = date
         self.categories = categories
         self.titleJP = titleJP
@@ -47,6 +51,7 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
         self.url = url
         self.source = source
         self.highlightsZH = highlightsZH
+        self.imageURL = imageURL
     }
 }
 

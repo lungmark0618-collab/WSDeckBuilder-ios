@@ -18,25 +18,32 @@ struct HomeView: View {
                                            description: Text("下拉重新整理試試看。"))
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: Spacing.s12) {
-                            if let errorMessage = news.errorMessage {
-                                Text(errorMessage)
-                                    .font(.footnote)
-                                    .foregroundStyle(.orange)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, Spacing.s4)
-                            }
-                            ForEach(news.items) { item in
-                                Button {
-                                    selectedItem = item
-                                } label: {
-                                    row(item)
+                        VStack(spacing: Spacing.s16) {
+                            if !heroItems.isEmpty {
+                                HeroCarousel(items: heroItems, categoryColor: categoryColor(_:)) {
+                                    selectedItem = $0
                                 }
-                                .buttonStyle(.plain)
+                                .padding(.top, Spacing.s8)
                             }
+                            LazyVStack(spacing: Spacing.s12) {
+                                if let errorMessage = news.errorMessage {
+                                    Text(errorMessage)
+                                        .font(.footnote)
+                                        .foregroundStyle(.orange)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, Spacing.s4)
+                                }
+                                ForEach(news.items) { item in
+                                    Button {
+                                        selectedItem = item
+                                    } label: {
+                                        row(item)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, Spacing.s16)
                         }
-                        .padding(.horizontal, Spacing.s16)
-                        .padding(.top, Spacing.s8)
                         .padding(.bottom, 140)
                     }
                     .scrollContentBackground(.hidden)
@@ -63,6 +70,15 @@ struct HomeView: View {
                 NewsDetailSheet(item: item)
             }
         }
+    }
+
+    /// 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的做法，
+    /// 規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
+    private var heroItems: [WSNewsItem] {
+        news.items
+            .filter { $0.imageURL != nil && $0.categories.contains(where: { $0 == "商品情報" || $0 == "カードリスト" }) }
+            .prefix(6)
+            .map { $0 }
     }
 
     /// 首頁背景的全息光暈——呼應集換式卡牌本身的「卡背」質感，
@@ -157,5 +173,130 @@ struct HomeView: View {
         case "デッキレシピ": Color(red: 1.0, green: 0.56, blue: 0.67)
         default: .secondary
         }
+    }
+}
+
+/// 首頁最上方的大圖輪播——參考官網首頁「最新商品」跑馬燈：整張商品視覺圖
+/// 滿版顯示、左右滑動切換、底部疊標題跟日期，比純文字列表更能一眼抓住
+/// 「現在有什麼新東西」
+private struct HeroCarousel: View {
+    let items: [WSNewsItem]
+    let categoryColor: (String) -> Color
+    let onSelect: (WSNewsItem) -> Void
+    @State private var index = 0
+
+    var body: some View {
+        VStack(spacing: Spacing.s12) {
+            TabView(selection: $index) {
+                ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                    HeroSlide(item: item, accent: item.categories.first.map(categoryColor) ?? .white) {
+                        onSelect(item)
+                    }
+                    .tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 224)
+
+            if items.count > 1 {
+                HStack(spacing: 6) {
+                    ForEach(items.indices, id: \.self) { i in
+                        Capsule()
+                            .fill(i == index ? .white : .white.opacity(0.28))
+                            .frame(width: i == index ? 16 : 6, height: 6)
+                    }
+                }
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: index)
+            }
+        }
+    }
+}
+
+private struct HeroSlide: View {
+    let item: WSNewsItem
+    let accent: Color
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            ZStack(alignment: .bottomLeading) {
+                HeroImage(urlString: item.imageURL)
+                LinearGradient(colors: [.clear, .clear, .black.opacity(0.55), .black.opacity(0.92)],
+                               startPoint: .top, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: Spacing.s8) {
+                    HStack(spacing: Spacing.s4) {
+                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                            .fill(accent)
+                            .frame(width: 6, height: 6)
+                            .rotationEffect(.degrees(45))
+                            .shadow(color: accent.opacity(0.8), radius: 4)
+                        Text(item.categories.first ?? "")
+                            .font(.caption2.weight(.heavy))
+                            .tracking(0.4)
+                        Spacer()
+                        Text(item.date.replacingOccurrences(of: "-", with: "."))
+                            .font(.caption2.weight(.bold).monospacedDigit())
+                    }
+                    .foregroundStyle(.white.opacity(0.85))
+                    Text(item.displayTitle)
+                        .font(.title3.weight(.heavy))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+                }
+                .padding(Spacing.s16)
+            }
+            .frame(maxWidth: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: Radius.large, style: .continuous)
+                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+            }
+            .padding(.horizontal, Spacing.s16)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// 輪播用的滿版圖片，跟卡圖一樣受「省流量」網路政策約束，行動網路下
+/// 預設不自動下載、點一下佔位圖才強制載入
+private struct HeroImage: View {
+    let urlString: String?
+    @State private var forceLoad = false
+
+    var body: some View {
+        GeometryReader { proxy in
+            if let urlString, let url = URL(string: urlString),
+               NetworkPolicy.shared.allowsAutomaticDownload || forceLoad {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().scaledToFill()
+                    } else {
+                        placeholder
+                    }
+                }
+                .frame(width: proxy.size.width, height: proxy.size.height)
+                .clipped()
+            } else {
+                Button { forceLoad = true } label: {
+                    ZStack {
+                        placeholder
+                        VStack(spacing: Spacing.s4) {
+                            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                            Text("省流量，點一下載入圖片")
+                                .font(.caption2)
+                        }
+                        .foregroundStyle(.white.opacity(0.6))
+                    }
+                }
+                .buttonStyle(.plain)
+                .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+        }
+    }
+
+    private var placeholder: some View {
+        Rectangle().fill(AppSurface.panel)
     }
 }
