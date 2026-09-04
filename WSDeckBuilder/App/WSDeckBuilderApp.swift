@@ -12,6 +12,7 @@ struct WSDeckBuilderApp: App {
     @State private var deckImport = DeckImportCoordinator()
     @State private var wsNews = WSNewsService()
     @State private var waveNames = WaveNameService()
+    @State private var pinnedDecks = PinnedDecksStore()
     // 只有冷啟動才會跑 .task，使用者切去別的 App 再切回來（沒有真的把 App
     // 滑掉重開）並不會重新觸發——這才是「還是要手動按檢查更新」的真正原因，
     // 要另外盯 scenePhase 回到前景才會再查一次
@@ -29,6 +30,7 @@ struct WSDeckBuilderApp: App {
                 .environment(deckImport)
                 .environment(wsNews)
                 .environment(waveNames)
+                .environment(pinnedDecks)
                 .appAppearance(appearance)
                 .task {
                     await database.load(waveNameOverrides: waveNames.labels)

@@ -7,6 +7,7 @@ struct DeckListView: View {
     @Environment(\.modelContext) private var context
     @Environment(CardDatabase.self) private var database
     @Environment(OnboardingCoordinator.self) private var onboarding
+    @Environment(PinnedDecksStore.self) private var pinnedDecks
     @Query(sort: \Deck.createdAt) private var decks: [Deck]
     @AppStorage("activeDeckUUID") private var activeDeckUUID: String = ""
 
@@ -50,6 +51,17 @@ struct DeckListView: View {
                         } label: {
                             Label("重新命名", systemImage: "pencil")
                         }
+                    }
+                    .swipeActions(edge: .leading) {
+                        // 常用牌組手動釘選到首頁，不是自動依使用頻率排序——
+                        // 「順手」由使用者自己決定
+                        Button {
+                            pinnedDecks.toggle(deck.uuid)
+                        } label: {
+                            Label(pinnedDecks.isPinned(deck.uuid) ? "取消釘選" : "釘選到首頁",
+                                  systemImage: pinnedDecks.isPinned(deck.uuid) ? "pin.slash.fill" : "pin.fill")
+                        }
+                        .tint(.orange)
                     }
                 }
             }
@@ -445,6 +457,7 @@ struct DeckListView: View {
 
     private func delete(_ deck: Deck) {
         if deck.uuid.uuidString == activeDeckUUID { activeDeckUUID = "" }
+        pinnedDecks.remove(deck.uuid)
         context.delete(deck)
         try? context.save()
     }
