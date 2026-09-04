@@ -14,6 +14,7 @@ enum OnboardingStep: Int, CaseIterable {
     case filter
     case notifications
     case createDeck
+    case pinDecks
     case viewCard
     case addToDeck
     case appearance
@@ -26,6 +27,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .filter: "篩選條件"
         case .notifications: "通知"
         case .createDeck: "建立牌組"
+        case .pinDecks: "釘選常用牌組"
         case .viewCard: "查看卡片"
         case .addToDeck: "加入牌組"
         case .appearance: "外觀設定"
@@ -40,6 +42,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .filter: "點篩選，可以用等級、顏色、種類縮小範圍。"
         case .notifications: "開發者的公告和卡表更新，都會在這裡提醒你。"
         case .createDeck: "點右上角的＋，建立你的第一副牌組。"
+        case .pinDecks: "在牌組上向右滑，點「釘選到首頁」，常用的牌組就會出現在首頁最上方，不用每次都切分頁找。"
         case .viewCard: "回到圖鑑，點一部作品、再點一張卡，看看完整能力文字翻譯。"
         case .addToDeck: "在卡片上點「＋」，把它加進剛剛建立的牌組。"
         case .appearance: "點「外觀」，字級、背景、強調色都能依你喜好調整。"
@@ -52,7 +55,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .welcome: nil
         case .homeIntro: .home
         case .search, .filter, .notifications, .viewCard, .addToDeck: .catalog
-        case .createDeck: .deck
+        case .createDeck, .pinDecks: .deck
         case .appearance: .settings
         }
     }

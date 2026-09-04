@@ -57,12 +57,14 @@ struct DeckListView: View {
                         // 「順手」由使用者自己決定
                         Button {
                             pinnedDecks.toggle(deck.uuid)
+                            onboarding.notify(.pinDecks)
                         } label: {
                             Label(pinnedDecks.isPinned(deck.uuid) ? "取消釘選" : "釘選到首頁",
                                   systemImage: pinnedDecks.isPinned(deck.uuid) ? "pin.slash.fill" : "pin.fill")
                         }
                         .tint(.orange)
                     }
+                    .modifier(FirstRowPinAnchor(isFirst: deck.uuid == decks.first?.uuid))
                 }
             }
             .listStyle(.plain)
@@ -460,5 +462,17 @@ struct DeckListView: View {
         pinnedDecks.remove(deck.uuid)
         context.delete(deck)
         try? context.save()
+    }
+}
+
+/// 教學光圈只該指第一列（不然每一列都圈起來很亂），其餘列不掛 anchor
+private struct FirstRowPinAnchor: ViewModifier {
+    let isFirst: Bool
+    func body(content: Content) -> some View {
+        if isFirst {
+            content.onboardingAnchor(.pinDecks)
+        } else {
+            content
+        }
     }
 }
