@@ -11,7 +11,9 @@ struct NewsDetailSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s24) {
                     if let imageURL = item.bestImageURL {
-                        PolicyGatedRemoteImage(urlString: imageURL)
+                        // 商品包裝圖官網來源正方形、長方形都有，用 .fit 完整顯示
+                        // 不裁切——裁切填滿常常把包裝上的字或圖案切掉一半
+                        PolicyGatedRemoteImage(urlString: imageURL, contentMode: .fit)
                             .frame(height: 200)
                             .clipShape(RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
                             .overlay {
