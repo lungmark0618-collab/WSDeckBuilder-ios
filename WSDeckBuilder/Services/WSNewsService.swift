@@ -17,10 +17,15 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
     let highlightsZH: [String]
     /// 首頁輪播用的縮圖，不是每則都有——沒配圖的公告就不會出現在輪播裡
     let imageURL: String?
+    /// 商品頁自己的大圖（包裝盒圖），比列表縮圖更清楚——只有商品類公告
+    /// 才有，詳情頁優先用這張，沒有的話退回用列表縮圖
+    let detailImageURL: String?
 
     var id: String { "\(date)-\(titleJP)-\(url)" }
     /// 有中文說明就顯示中文，沒有就顯示官方日文原文——不擅自翻譯，只顯示有把握的內容
     var displayTitle: String { titleZH ?? titleJP }
+    /// 詳情頁該顯示的圖：優先用商品頁大圖，沒有就退回列表縮圖
+    var bestImageURL: String? { detailImageURL ?? imageURL }
 
     enum CodingKeys: String, CodingKey {
         case date, categories, url, source
@@ -28,6 +33,7 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
         case titleZH = "title_zh"
         case highlightsZH = "highlights_zh"
         case imageURL = "image_url"
+        case detailImageURL = "detail_image_url"
     }
 
     init(from decoder: Decoder) throws {
@@ -40,10 +46,12 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
         source = try c.decode(String.self, forKey: .source)
         highlightsZH = try c.decodeIfPresent([String].self, forKey: .highlightsZH) ?? []
         imageURL = try c.decodeIfPresent(String.self, forKey: .imageURL)
+        detailImageURL = try c.decodeIfPresent(String.self, forKey: .detailImageURL)
     }
 
     init(date: String, categories: [String], titleJP: String, titleZH: String?,
-         url: String, source: String, highlightsZH: [String] = [], imageURL: String? = nil) {
+         url: String, source: String, highlightsZH: [String] = [], imageURL: String? = nil,
+         detailImageURL: String? = nil) {
         self.date = date
         self.categories = categories
         self.titleJP = titleJP
@@ -52,6 +60,7 @@ struct WSNewsItem: Codable, Identifiable, Hashable {
         self.source = source
         self.highlightsZH = highlightsZH
         self.imageURL = imageURL
+        self.detailImageURL = detailImageURL
     }
 }
 

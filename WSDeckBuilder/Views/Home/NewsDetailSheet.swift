@@ -10,6 +10,15 @@ struct NewsDetailSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.s24) {
+                    if let imageURL = item.bestImageURL {
+                        PolicyGatedRemoteImage(urlString: imageURL)
+                            .frame(height: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
+                                    .strokeBorder(AppSurface.hairline, lineWidth: 1)
+                            }
+                    }
                     header
                     if !item.highlightsZH.isEmpty {
                         highlightsCard

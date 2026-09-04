@@ -317,7 +317,7 @@ private struct HeroSlide: View {
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .bottomLeading) {
-                HeroImage(urlString: item.imageURL)
+                PolicyGatedRemoteImage(urlString: item.imageURL)
                 LinearGradient(colors: [.clear, .clear, .black.opacity(0.55), .black.opacity(0.92)],
                                startPoint: .top, endPoint: .bottom)
                 VStack(alignment: .leading, spacing: Spacing.s8) {
@@ -353,47 +353,5 @@ private struct HeroSlide: View {
             .padding(.horizontal, Spacing.s16)
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// 輪播用的滿版圖片，跟卡圖一樣受「省流量」網路政策約束，行動網路下
-/// 預設不自動下載、點一下佔位圖才強制載入
-private struct HeroImage: View {
-    let urlString: String?
-    @State private var forceLoad = false
-
-    var body: some View {
-        GeometryReader { proxy in
-            if let urlString, let url = URL(string: urlString),
-               NetworkPolicy.shared.allowsAutomaticDownload || forceLoad {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
-                        placeholder
-                    }
-                }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
-            } else {
-                Button { forceLoad = true } label: {
-                    ZStack {
-                        placeholder
-                        VStack(spacing: Spacing.s4) {
-                            Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                            Text("省流量，點一下載入圖片")
-                                .font(.caption2)
-                        }
-                        .foregroundStyle(.white.opacity(0.6))
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(width: proxy.size.width, height: proxy.size.height)
-            }
-        }
-    }
-
-    private var placeholder: some View {
-        Rectangle().fill(AppSurface.panel)
     }
 }
