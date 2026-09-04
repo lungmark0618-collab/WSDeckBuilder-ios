@@ -7,6 +7,7 @@ struct HomeView: View {
     @Environment(WSNewsService.self) private var news
     @Environment(CardDatabase.self) private var database
     @Environment(PinnedDecksStore.self) private var pinnedDecks
+    @Environment(NewsCategoryFilterStore.self) private var categoryFilter
     @Query private var allDecks: [Deck]
     // 點公告先看我們整理過的重點，不是直接跳出 App 到瀏覽器——
     // 有興趣看完整內容的人，詳情頁裡還有官網連結
@@ -14,6 +15,7 @@ struct HomeView: View {
     /// 點常用牌組直接用 sheet 開詳情，不用切去「牌組」分頁再找一次——
     /// 這正是「釘選到首頁」要省下來的那一步
     @State private var selectedDeck: Deck?
+    @State private var showingCategoryFilter = false
 
     var body: some View {
         NavigationStack {
@@ -33,7 +35,7 @@ struct HomeView: View {
                                 .padding(.top, Spacing.s8)
                             }
                             if !heroItems.isEmpty {
-                                HeroCarousel(items: heroItems, categoryColor: categoryColor(_:)) {
+                                HeroCarousel(items: heroItems, categoryColor: NewsCategory.color(_:)) {
                                     selectedItem = $0
                                 }
                                 .padding(.top, pinnedDecksOrdered.isEmpty ? Spacing.s8 : 0)
@@ -47,7 +49,7 @@ struct HomeView: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .padding(.horizontal, Spacing.s4)
                                 }
-                                ForEach(news.items) { item in
+                                ForEach(filteredItems) { item in
                                     Button {
                                         selectedItem = item
                                     } label: {
@@ -77,7 +79,16 @@ struct HomeView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NotificationBellButton()
+                    HStack(spacing: Spacing.s4) {
+                        Button {
+                            showingCategoryFilter = true
+                        } label: {
+                            Image(systemName: categoryFilter.hidden.isEmpty
+                                  ? "line.3.horizontal.decrease.circle"
+                                  : "line.3.horizontal.decrease.circle.fill")
+                        }
+                        NotificationBellButton()
+                    }
                 }
             }
             .sheet(item: $selectedItem) { item in
@@ -88,7 +99,16 @@ struct HomeView: View {
                     DeckDetailView(deck: deck)
                 }
             }
+            .sheet(isPresented: $showingCategoryFilter) {
+                NewsCategoryFilterSheet(store: categoryFilter)
+            }
         }
+    }
+
+    /// 套用使用者的分類篩選——輪播跟列表共用同一份結果，
+    /// 免得使用者把某分類關掉了，卻還在輪播裡看到
+    private var filteredItems: [WSNewsItem] {
+        news.items.filter { categoryFilter.isVisible($0) }
     }
 
     /// 依釘選順序排出實際存在的牌組——牌組被刪掉但清理沒跑到的殘影
@@ -102,7 +122,7 @@ struct HomeView: View {
     /// 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的做法，
     /// 規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
     private var heroItems: [WSNewsItem] {
-        news.items
+        filteredItems
             .filter { $0.imageURL != nil && $0.categories.contains(where: { $0 == "商品情報" || $0 == "カードリスト" }) }
             .prefix(6)
             .map { $0 }
@@ -122,22 +142,22 @@ struct HomeView: View {
     }
 
     private func row(_ item: WSNewsItem) -> some View {
-        let color = item.categories.first.map(categoryColor) ?? .secondary
+        let color = item.categories.first.map(NewsCategory.color) ?? .secondary
         return VStack(alignment: .leading, spacing: Spacing.s8) {
             HStack(spacing: Spacing.s8) {
                 ForEach(item.categories, id: \.self) { category in
                     HStack(spacing: Spacing.s4) {
                         // 小菱形「寶石」取代原本的色塊膠囊，呼應卡牌稀有度標記
                         RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(categoryColor(category))
+                            .fill(NewsCategory.color(category))
                             .frame(width: 6, height: 6)
                             .rotationEffect(.degrees(45))
-                            .shadow(color: categoryColor(category).opacity(0.7), radius: 4)
-                        Text(category)
+                            .shadow(color: NewsCategory.color(category).opacity(0.7), radius: 4)
+                        Text(NewsCategory.labelZH(category))
                             .font(.caption2.weight(.heavy))
                             .tracking(0.4)
                     }
-                    .foregroundStyle(categoryTint(category))
+                    .foregroundStyle(NewsCategory.tint(category))
                 }
                 Spacer(minLength: Spacing.s8)
                 Text(item.date.replacingOccurrences(of: "-", with: "."))
@@ -178,29 +198,6 @@ struct HomeView: View {
         }
     }
 
-    /// 卡角燙金色塊、寶石標記共用的飽和色
-    private func categoryColor(_ category: String) -> Color {
-        switch category {
-        case "商品情報": .blue
-        case "カードリスト": .green
-        case "大会", "イベント": .orange
-        case "ルール": .purple
-        case "デッキレシピ": .pink
-        default: .secondary
-        }
-    }
-
-    /// 分類文字用的淺色調，飽和色直接當文字色在深底上太刺眼
-    private func categoryTint(_ category: String) -> Color {
-        switch category {
-        case "商品情報": Color(red: 0.43, green: 0.72, blue: 1.0)
-        case "カードリスト": Color(red: 0.48, green: 0.87, blue: 0.62)
-        case "大会", "イベント": Color(red: 1.0, green: 0.74, blue: 0.42)
-        case "ルール": Color(red: 0.85, green: 0.64, blue: 1.0)
-        case "デッキレシピ": Color(red: 1.0, green: 0.56, blue: 0.67)
-        default: .secondary
-        }
-    }
 }
 
 /// 常用牌組快速列——使用者在「牌組」分頁左滑釘選，最想順手開的幾副牌組
@@ -327,7 +324,7 @@ private struct HeroSlide: View {
                             .frame(width: 6, height: 6)
                             .rotationEffect(.degrees(45))
                             .shadow(color: accent.opacity(0.8), radius: 4)
-                        Text(item.categories.first ?? "")
+                        Text(item.categories.first.map(NewsCategory.labelZH) ?? "")
                             .font(.caption2.weight(.heavy))
                             .tracking(0.4)
                         Spacer()
@@ -353,5 +350,47 @@ private struct HeroSlide: View {
             .padding(.horizontal, Spacing.s16)
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// 首頁公告分類篩選——關掉不想看的分類，輪播跟列表都會跟著濾掉
+private struct NewsCategoryFilterSheet: View {
+    let store: NewsCategoryFilterStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(NewsCategory.all, id: \.self) { category in
+                    Button {
+                        store.toggle(category)
+                    } label: {
+                        HStack {
+                            HStack(spacing: Spacing.s8) {
+                                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                                    .fill(NewsCategory.color(category))
+                                    .frame(width: 8, height: 8)
+                                    .rotationEffect(.degrees(45))
+                                Text(NewsCategory.labelZH(category))
+                                    .foregroundStyle(.primary)
+                            }
+                            Spacer()
+                            if !store.isHidden(category) {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("篩選首頁公告")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 }

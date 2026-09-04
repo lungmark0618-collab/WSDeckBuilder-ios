@@ -47,12 +47,12 @@ struct NewsDetailSheet: View {
         VStack(alignment: .leading, spacing: Spacing.s8) {
             HStack(spacing: Spacing.s8) {
                 ForEach(item.categories, id: \.self) { category in
-                    Text(category)
+                    Text(NewsCategory.labelZH(category))
                         .font(.caption2.weight(.bold))
                         .padding(.horizontal, Spacing.s8)
                         .padding(.vertical, 3)
-                        .background(categoryColor(category).opacity(0.16), in: Capsule())
-                        .foregroundStyle(categoryColor(category))
+                        .background(NewsCategory.color(category).opacity(0.16), in: Capsule())
+                        .foregroundStyle(NewsCategory.color(category))
                 }
                 Spacer(minLength: Spacing.s8)
                 Text(item.date)
@@ -120,16 +120,5 @@ struct NewsDetailSheet: View {
             }
         }
         .buttonStyle(.filled)
-    }
-
-    private func categoryColor(_ category: String) -> Color {
-        switch category {
-        case "商品情報": .blue
-        case "カードリスト": .green
-        case "大会", "イベント": .orange
-        case "ルール": .purple
-        case "デッキレシピ": .pink
-        default: .secondary
-        }
     }
 }
