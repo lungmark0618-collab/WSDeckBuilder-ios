@@ -10,6 +10,9 @@ final class Deck {
     var note: String = ""
     /// 封面卡的刷版卡號；空字串表示自動取牌組中等級最高的一張
     var coverPrintingID: String = ""
+    /// 使用者在卡表拖曳排序過的卡片 id（不分刷版）。沒被拖曳過的卡不在這裡，
+    /// 顯示時自然照卡號排序接在後面——不用整副牌都排過一輪才能用
+    var cardOrder: [String] = []
     @Relationship(deleteRule: .cascade, inverse: \DeckEntry.deck)
     var entries: [DeckEntry] = []
 
@@ -67,6 +70,27 @@ final class Deck {
         guard let source = entry(forPrinting: from), source.count > 0 else { return }
         adjust(printingID: from, by: -1, context: context)
         adjust(printingID: to, by: 1, context: context)
+    }
+
+    /// 依使用者拖曳過的順序排出卡片 id；沒排過的卡（新加的、還沒拖過的）
+    /// 照卡號自然排序，接在已排序的卡後面
+    func customOrder(sorting ids: [String]) -> [String] {
+        let index = Dictionary(uniqueKeysWithValues: cardOrder.enumerated().map { ($1, $0) })
+        return ids.sorted { a, b in
+            switch (index[a], index[b]) {
+            case let (ia?, ib?): return ia < ib
+            case (.some, nil): return true
+            case (nil, .some): return false
+            case (nil, nil): return a < b
+            }
+        }
+    }
+
+    /// 拖曳排序後寫回完整順序
+    func setCardOrder(_ ids: [String], context: ModelContext) {
+        cardOrder = ids
+        updatedAt = .now
+        try? context.save()
     }
 }
 

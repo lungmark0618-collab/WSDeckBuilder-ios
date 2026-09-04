@@ -28,7 +28,9 @@ struct DeckStatsView: View {
         let nonClimax = items.filter { $0.card.cardType != .climax }
         let totalNonClimax = nonClimax.reduce(0) { $0 + $1.count }
         let totalCost = nonClimax.reduce(0) { $0 + ($1.card.cost ?? 0) * $1.count }
-        let totalSoul = items.reduce(0) { $0 + ($1.card.soul ?? 0) * $1.count }
+        // 「總魂刻數」數的是有魂刻標誌的張數（卡牌右上角有沒有那個圖示），
+        // 不是把每張的魂刻數值加總——使用者要看的是機率相關的張數，不是強度
+        let soulCount = items.filter { ($0.card.soul ?? 0) >= 1 }.reduce(0) { $0 + $1.count }
         let avgCost = totalNonClimax > 0
             ? String(format: "%.2f", Double(totalCost) / Double(totalNonClimax)) : "-"
         let avgPower = totalNonClimax > 0
@@ -40,8 +42,8 @@ struct DeckStatsView: View {
             statTile("總張數", "\(items.reduce(0) { $0 + $1.count })",
                      "square.stack.3d.up", .accentColor)
             statTile("平均費用", avgCost, "diamond", .orange)
-            statTile("平均攻擊", avgPower, "bolt", .blue)
-            statTile("總魂傷", "\(totalSoul)", "flame", .purple)
+            statTile("平均攻擊力", avgPower, "bolt", .blue)
+            statTile("總魂刻數", "\(soulCount)", "flame", .purple)
         }
     }
 

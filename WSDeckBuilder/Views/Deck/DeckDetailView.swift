@@ -11,6 +11,8 @@ struct DeckDetailView: View {
     @State private var mode: Mode = .cards
     @State private var detailCard: Card?
     @State private var isEditing = false
+    /// 卡表清單模式的拖曳排序開關，跟「編輯」（加減張數）分開，不互相干擾
+    @State private var isReordering = false
     @State private var isPickingCover = false
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
@@ -73,6 +75,18 @@ struct DeckDetailView: View {
                         Image(systemName: usesGrid ? "list.bullet" : "square.grid.3x3")
                     }
                     .accessibilityLabel(usesGrid ? "改為清單顯示" : "改為圖片顯示")
+                }
+                // 拖曳排序只在清單模式才有意義（原生 List 拖曳手把），
+                // 圖片格線會照排好的順序顯示，但排序動作要回清單模式做
+                if !usesGrid {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            withAnimation { isReordering.toggle() }
+                        } label: {
+                            Image(systemName: isReordering ? "checkmark" : "arrow.up.arrow.down")
+                        }
+                        .accessibilityLabel(isReordering ? "完成排序" : "拖曳排序卡表")
+                    }
                 }
             }
             ToolbarItem(placement: .topBarTrailing) { actionMenu }
@@ -240,6 +254,9 @@ struct DeckDetailView: View {
                             detailCard = item.card
                         }
                     }
+                    .onMove { from, to in
+                        moveCards(in: section, from: from, to: to)
+                    }
                 }
             }
         }
@@ -247,6 +264,8 @@ struct DeckDetailView: View {
         .scrollContentBackground(.hidden)
         .background(AppSurface.background)
         .clearsGlassTabBar()
+        // 只在使用者主動按「拖曳排序」時才切原生編輯模式，不然清單一直有拖曳手把很礙眼
+        .environment(\.editMode, .constant(isReordering ? .active : .inactive))
         .overlay {
             if deck.entries.isEmpty {
                 ContentUnavailableView("牌組是空的",
@@ -254,6 +273,21 @@ struct DeckDetailView: View {
                                        description: Text("到「圖鑑」分頁選擇此牌組後按＋加卡"))
             }
         }
+    }
+
+    /// 把某個分區內拖曳後的新順序，寫回整副牌的排序記錄——其他分區的位置不動
+    private func moveCards(in section: LevelSection, from: IndexSet, to: Int) {
+        var sectionIDs = section.items.map(\.card.id)
+        sectionIDs.move(fromOffsets: from, toOffset: to)
+
+        let allIDs = DeckExporter.groupByCard(deck: deck, database: database).map(\.card.id)
+        var fullOrder = deck.customOrder(sorting: allIDs)
+        let sectionSet = Set(sectionIDs)
+        var newValues = sectionIDs.makeIterator()
+        for i in fullOrder.indices where sectionSet.contains(fullOrder[i]) {
+            if let next = newValues.next() { fullOrder[i] = next }
+        }
+        deck.setCardOrder(fullOrder, context: context)
     }
 
     private struct LevelSection {
@@ -284,7 +318,10 @@ struct DeckDetailView: View {
     }
 
     private var sections: [LevelSection] {
-        let grouped = DeckExporter.groupByCard(deck: deck, database: database)
+        let unordered = DeckExporter.groupByCard(deck: deck, database: database)
+        let orderIndex = Dictionary(uniqueKeysWithValues:
+            deck.customOrder(sorting: unordered.map(\.card.id)).enumerated().map { ($1, $0) })
+        let grouped = unordered.sorted { (orderIndex[$0.card.id] ?? 0) < (orderIndex[$1.card.id] ?? 0) }
         var result: [LevelSection] = []
         for level in 0...3 {
             let items = grouped.filter { $0.card.level == level && $0.card.cardType != .climax }
