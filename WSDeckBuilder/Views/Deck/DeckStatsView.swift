@@ -28,9 +28,10 @@ struct DeckStatsView: View {
         let nonClimax = items.filter { $0.card.cardType != .climax }
         let totalNonClimax = nonClimax.reduce(0) { $0 + $1.count }
         let totalCost = nonClimax.reduce(0) { $0 + ($1.card.cost ?? 0) * $1.count }
-        // 「總魂刻數」數的是有魂刻標誌的張數（卡牌右上角有沒有那個圖示），
-        // 不是把每張的魂刻數值加總——使用者要看的是機率相關的張數，不是強度
-        let soulCount = items.filter { ($0.card.soul ?? 0) >= 1 }.reduce(0) { $0 + $1.count }
+        // 「總魂刻數」數的是卡牌右上角印有魂刻判定圖示（trigger 為魂／雙魂）的張數，
+        // 不是 card.soul 那個數值欄位——那是攻擊力旁邊的魂傷，跟右上角的判定圖示是兩回事
+        let soulCount = items.filter { $0.card.trigger == .soul || $0.card.trigger == .soul2 }
+            .reduce(0) { $0 + $1.count }
         let avgCost = totalNonClimax > 0
             ? String(format: "%.2f", Double(totalCost) / Double(totalNonClimax)) : "-"
         let avgPower = totalNonClimax > 0
