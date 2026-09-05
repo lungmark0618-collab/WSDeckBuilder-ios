@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 單一牌組編輯，依等級分組；卡表／統計／缺卡切換，卡表可切圖片或清單（§4.3）
 struct DeckDetailView: View {
@@ -12,6 +13,10 @@ struct DeckDetailView: View {
     @State private var detailCard: Card?
     @State private var isEditing = false
     @State private var isPickingCover = false
+    /// 拖曳排序中，正在拖的卡片 id——用舊式 onDrag/onDrop(delegate:) 而不是
+    /// .draggable/.dropDestination，因為後者在 List 裡跟 Section、Button
+    /// 標籤混用時，實測長按會浮起來但放開完全不會真的換位置
+    @State private var draggingCardID: String?
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
     /// 卡表的顯示方式（與圖鑑分頁各自記憶）
@@ -239,17 +244,20 @@ struct DeckDetailView: View {
                             editable: isEditing) {
                             detailCard = item.card
                         }
-                        // 不用先切「排序模式」，長按任一列直接拖到想要的位置放開即可
-                        .draggable(item.card.id)
-                        .dropDestination(for: String.self) { droppedIDs, _ in
-                            guard let draggedID = droppedIDs.first,
-                                  let from = section.items.firstIndex(where: { $0.card.id == draggedID }),
-                                  let to = section.items.firstIndex(where: { $0.card.id == item.card.id }),
-                                  from != to else { return false }
-                            moveCards(in: section, from: IndexSet(integer: from),
-                                     to: to > from ? to + 1 : to)
-                            return true
+                        // 不用先切「排序模式」，長按任一列直接拖到想要的位置放開即可。
+                        // 用舊式 onDrag/onDrop(delegate:)，不用 .draggable/.dropDestination——
+                        // 後者在 List 裡跟這一列的 Button 標籤混用時，實測長按會浮起來，
+                        // 但放開完全不會真的換位置（drop 沒有被觸發）
+                        .onDrag {
+                            draggingCardID = item.card.id
+                            return NSItemProvider(object: item.card.id as NSString)
                         }
+                        .onDrop(of: [.text], delegate: CardReorderDropDelegate(
+                            targetID: item.card.id,
+                            items: section.items,
+                            draggingID: $draggingCardID,
+                            onMove: { from, to in moveCards(in: section, from: from, to: to) }
+                        ))
                     }
                 }
             }
@@ -280,6 +288,32 @@ struct DeckDetailView: View {
             if let next = newValues.next() { fullOrder[i] = next }
         }
         deck.setCardOrder(fullOrder, context: context)
+    }
+
+    /// 拖曳排序放開時的目標——手指拖著的那張卡「進入」某一列的範圍就觸發一次
+    /// 交換，跟 Android 那邊「量每列位置決定交換」是同一個思路
+    private struct CardReorderDropDelegate: DropDelegate {
+        let targetID: String
+        let items: [DeckExporter.CardCount]
+        @Binding var draggingID: String?
+        let onMove: (IndexSet, Int) -> Void
+
+        func dropEntered(info: DropInfo) {
+            guard let draggingID, draggingID != targetID,
+                  let from = items.firstIndex(where: { $0.card.id == draggingID }),
+                  let to = items.firstIndex(where: { $0.card.id == targetID })
+            else { return }
+            onMove(IndexSet(integer: from), to > from ? to + 1 : to)
+        }
+
+        func dropUpdated(info: DropInfo) -> DropProposal? {
+            DropProposal(operation: .move)
+        }
+
+        func performDrop(info: DropInfo) -> Bool {
+            draggingID = nil
+            return true
+        }
     }
 
     private struct LevelSection {
