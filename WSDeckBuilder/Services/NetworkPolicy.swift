@@ -52,9 +52,16 @@ final class NetworkPolicy {
         monitor.pathUpdateHandler = { [weak self] path in
             Task { @MainActor in
                 guard let self else { return }
+                let wasAllowed = self.allowsAutomaticDownload
                 self.isExpensive = path.isExpensive
                 self.isConstrained = path.isConstrained
                 self.isConnected = path.status == .satisfied
+                // 剛從「不能自動下載」變成「可以」——如果有排隊中的預載（見
+                // queuePrefetchForWiFi），接著繼續。之前這裡沒接，使用者選了
+                // 「僅用 Wi-Fi 時下載」之後其實永遠不會真的恢復下載。
+                if !wasAllowed, self.allowsAutomaticDownload {
+                    await ImageCache.shared.resumePendingPrefetchIfAny { _, _ in }
+                }
             }
         }
         monitor.start(queue: DispatchQueue(label: "NetworkPolicy"))
