@@ -11,8 +11,6 @@ struct DeckDetailView: View {
     @State private var mode: Mode = .cards
     @State private var detailCard: Card?
     @State private var isEditing = false
-    /// 卡表清單模式的拖曳排序開關，跟「編輯」（加減張數）分開，不互相干擾
-    @State private var isReordering = false
     @State private var isPickingCover = false
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
@@ -75,18 +73,6 @@ struct DeckDetailView: View {
                         Image(systemName: usesGrid ? "list.bullet" : "square.grid.3x3")
                     }
                     .accessibilityLabel(usesGrid ? "改為清單顯示" : "改為圖片顯示")
-                }
-                // 拖曳排序只在清單模式才有意義（原生 List 拖曳手把），
-                // 圖片格線會照排好的順序顯示，但排序動作要回清單模式做
-                if !usesGrid {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation { isReordering.toggle() }
-                        } label: {
-                            Image(systemName: isReordering ? "checkmark" : "arrow.up.arrow.down")
-                        }
-                        .accessibilityLabel(isReordering ? "完成排序" : "拖曳排序卡表")
-                    }
                 }
             }
             ToolbarItem(placement: .topBarTrailing) { actionMenu }
@@ -253,9 +239,17 @@ struct DeckDetailView: View {
                             editable: isEditing) {
                             detailCard = item.card
                         }
-                    }
-                    .onMove { from, to in
-                        moveCards(in: section, from: from, to: to)
+                        // 不用先切「排序模式」，長按任一列直接拖到想要的位置放開即可
+                        .draggable(item.card.id)
+                        .dropDestination(for: String.self) { droppedIDs, _ in
+                            guard let draggedID = droppedIDs.first,
+                                  let from = section.items.firstIndex(where: { $0.card.id == draggedID }),
+                                  let to = section.items.firstIndex(where: { $0.card.id == item.card.id }),
+                                  from != to else { return false }
+                            moveCards(in: section, from: IndexSet(integer: from),
+                                     to: to > from ? to + 1 : to)
+                            return true
+                        }
                     }
                 }
             }
@@ -264,8 +258,6 @@ struct DeckDetailView: View {
         .scrollContentBackground(.hidden)
         .background(AppSurface.background)
         .clearsGlassTabBar()
-        // 只在使用者主動按「拖曳排序」時才切原生編輯模式，不然清單一直有拖曳手把很礙眼
-        .environment(\.editMode, .constant(isReordering ? .active : .inactive))
         .overlay {
             if deck.entries.isEmpty {
                 ContentUnavailableView("牌組是空的",
