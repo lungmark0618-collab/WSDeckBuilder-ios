@@ -17,8 +17,14 @@ struct DeckDetailView: View {
     @State private var draggingCardID: String?
     @State private var dragOffsetY: CGFloat = 0
     @State private var rowFrames: [String: CGRect] = [:]
-    /// 手指按下那一刻該列的基準位置，只記一次——見 cardList 內的說明
+    /// 手指按下那一刻該列的基準位置——見 cardList 內的說明
     @State private var dragStartMidY: CGFloat?
+    /// 拖曳中那個分區目前正在顯示的順序，只存在記憶體裡，放開才真的寫回
+    /// deck.cardOrder。之前每交換一次就呼叫 context.save()，導致每次觸發
+    /// SwiftData／@Query 重新整理，畫面在拖曳中一路卡頓，偶爾那一列還會
+    /// 因為重新整理的瞬間被判定成「消失」重繪
+    @State private var draggingSectionTitle: String?
+    @State private var liveSectionItems: [DeckExporter.CardCount] = []
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
     /// 卡表的顯示方式（與圖鑑分頁各自記憶）
@@ -236,16 +242,17 @@ struct DeckDetailView: View {
     private var cardList: some View {
         List {
             ForEach(sections, id: \.title) { section in
+                // 拖曳中這個分區用記憶體裡的 liveSectionItems 即時顯示，其他分區
+                // 照常用 section.items；放開才把 liveSectionItems 寫回 deck.cardOrder
+                let displayItems = section.title == draggingSectionTitle ? liveSectionItems : section.items
                 Section("\(section.title) (\(section.count))") {
-                    ForEach(section.items, id: \.card.id) { item in
+                    ForEach(displayItems, id: \.card.id) { item in
                         HStack(spacing: 0) {
                             // 拖曳排序：完全手刻，不依賴系統的 drag-and-drop（.draggable／
                             // .onDrag／.dropDestination 這幾種系統 API 實測在這個 List 裡都
-                            // 長按會浮起來但放開不會真的換位置，而且完全沒辦法在模擬器上
-                            // 驗證）。改成跟 Android 同樣的思路：只在把手圖示這塊小範圍量
-                            // 手指位置，自己判斷該跟哪一列交換，直接呼叫 moveCards。
-                            // DragGesture 的 translation 是相對「手指按下時」算的絕對位移，
-                            // 不受交換後版面重排影響，不需要像 Android 那樣另外補償位移。
+                            // 長按會浮起來但放開不會真的換位置）。只在把手圖示這塊小範圍量
+                            // 手指位置，自己判斷該跟哪一列交換。DragGesture 的 translation
+                            // 是相對「手指按下時」算的絕對位移，不受交換後版面重排影響。
                             Image(systemName: "line.3.horizontal")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
@@ -254,31 +261,42 @@ struct DeckDetailView: View {
                                 .gesture(
                                     DragGesture(minimumDistance: 2, coordinateSpace: .named("cardListSpace"))
                                         .onChanged { value in
-                                            // dragStartMidY 只在手指按下那一刻記錄一次，之後都用它當基準：
-                                            // 交換發生後這一列會被重新排版、下一次量到的位置會自己跳一下
-                                            // （不是手指真的移動），如果每次都重讀「目前」位置當基準，
-                                            // 這個無關手指的跳動會被誤判成又要交換一次，滑一點點就連環
-                                            // 雪崩（跟 Android 那次雪崩同一種類型的 bug，機制不同）
                                             if draggingCardID != item.card.id {
                                                 draggingCardID = item.card.id
+                                                draggingSectionTitle = section.title
+                                                liveSectionItems = section.items
+                                            }
+                                            // 剛開始拖那一刻 rowFrames 可能還沒量完（例如一打開
+                                            // 牌組就立刻拖），只抓一次會永遠抓到 nil、這次手勢就
+                                            // 廢了、放開也不會真的換位置——改成沒抓到就一直重試
+                                            if dragStartMidY == nil {
                                                 dragStartMidY = rowFrames[item.card.id]?.midY
                                             }
                                             dragOffsetY = value.translation.height
                                             guard let startMidY = dragStartMidY else { return }
                                             let draggedCenterY = startMidY + dragOffsetY
-                                            guard let target = section.items.first(where: { other in
+                                            guard let target = liveSectionItems.first(where: { other in
                                                 guard other.card.id != item.card.id,
                                                       let f = rowFrames[other.card.id] else { return false }
                                                 return draggedCenterY >= f.minY && draggedCenterY <= f.maxY
                                             }),
-                                                  let from = section.items.firstIndex(where: { $0.card.id == item.card.id }),
-                                                  let to = section.items.firstIndex(where: { $0.card.id == target.card.id })
+                                                  let from = liveSectionItems.firstIndex(where: { $0.card.id == item.card.id }),
+                                                  let to = liveSectionItems.firstIndex(where: { $0.card.id == target.card.id })
                                             else { return }
-                                            moveCards(in: section, from: IndexSet(integer: from),
-                                                     to: to > from ? to + 1 : to)
+                                            // 只改記憶體裡的順序，不要每交換一次就存檔一次——
+                                            // 之前這樣寫，每次 context.save() 都會觸發 SwiftData／
+                                            // @Query 整個重新整理，拖曳中畫面一路卡頓，那一列
+                                            // 偶爾還會在重新整理的瞬間被判定成「消失」重繪
+                                            liveSectionItems.move(fromOffsets: IndexSet(integer: from),
+                                                                  toOffset: to > from ? to + 1 : to)
                                         }
                                         .onEnded { _ in
+                                            if !liveSectionItems.isEmpty {
+                                                commitOrder(liveSectionItems, in: section)
+                                            }
                                             draggingCardID = nil
+                                            draggingSectionTitle = nil
+                                            liveSectionItems = []
                                             dragOffsetY = 0
                                             dragStartMidY = nil
                                         }
@@ -329,10 +347,10 @@ struct DeckDetailView: View {
     }
 
     /// 把某個分區內拖曳後的新順序，寫回整副牌的排序記錄——其他分區的位置不動
-    private func moveCards(in section: LevelSection, from: IndexSet, to: Int) {
-        var sectionIDs = section.items.map(\.card.id)
-        sectionIDs.move(fromOffsets: from, toOffset: to)
-
+    /// 拖曳放開時才呼叫一次：把這個分區拖曳中在記憶體裡排好的最終順序寫回
+    /// deck.cardOrder，其他分區的位置不動
+    private func commitOrder(_ items: [DeckExporter.CardCount], in section: LevelSection) {
+        let sectionIDs = items.map(\.card.id)
         let allIDs = DeckExporter.groupByCard(deck: deck, database: database).map(\.card.id)
         var fullOrder = deck.customOrder(sorting: allIDs)
         let sectionSet = Set(sectionIDs)
