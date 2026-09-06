@@ -51,6 +51,12 @@ struct DeckListView: View {
                         } label: {
                             Label("重新命名", systemImage: "pencil")
                         }
+                        Button {
+                            duplicate(deck)
+                        } label: {
+                            Label("複製", systemImage: "doc.on.doc")
+                        }
+                        .tint(.blue)
                     }
                     .swipeActions(edge: .leading) {
                         // 常用牌組手動釘選到首頁，不是自動依使用頻率排序——
@@ -461,6 +467,16 @@ struct DeckListView: View {
         if deck.uuid.uuidString == activeDeckUUID { activeDeckUUID = "" }
         pinnedDecks.remove(deck.uuid)
         context.delete(deck)
+        try? context.save()
+    }
+
+    /// 複製整副牌（含每張卡張數、排序、封面），新牌組名稱加「的副本」，不影響原牌組
+    private func duplicate(_ deck: Deck) {
+        let copy = Deck(name: "\(deck.name)的副本")
+        copy.coverPrintingID = deck.coverPrintingID
+        copy.cardOrder = deck.cardOrder
+        copy.entries = deck.entries.map { DeckEntry(printingID: $0.printingID, count: $0.count) }
+        context.insert(copy)
         try? context.save()
     }
 }

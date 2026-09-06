@@ -17,6 +17,8 @@ struct DeckDetailView: View {
     @State private var draggingCardID: String?
     @State private var dragOffsetY: CGFloat = 0
     @State private var rowFrames: [String: CGRect] = [:]
+    /// 手指按下那一刻該列的基準位置，只記一次——見 cardList 內的說明
+    @State private var dragStartMidY: CGFloat?
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
     /// 卡表的顯示方式（與圖鑑分頁各自記憶）
@@ -252,12 +254,18 @@ struct DeckDetailView: View {
                                 .gesture(
                                     DragGesture(minimumDistance: 2, coordinateSpace: .named("cardListSpace"))
                                         .onChanged { value in
+                                            // dragStartMidY 只在手指按下那一刻記錄一次，之後都用它當基準：
+                                            // 交換發生後這一列會被重新排版、下一次量到的位置會自己跳一下
+                                            // （不是手指真的移動），如果每次都重讀「目前」位置當基準，
+                                            // 這個無關手指的跳動會被誤判成又要交換一次，滑一點點就連環
+                                            // 雪崩（跟 Android 那次雪崩同一種類型的 bug，機制不同）
                                             if draggingCardID != item.card.id {
                                                 draggingCardID = item.card.id
+                                                dragStartMidY = rowFrames[item.card.id]?.midY
                                             }
                                             dragOffsetY = value.translation.height
-                                            guard let myFrame = rowFrames[item.card.id] else { return }
-                                            let draggedCenterY = myFrame.midY + dragOffsetY
+                                            guard let startMidY = dragStartMidY else { return }
+                                            let draggedCenterY = startMidY + dragOffsetY
                                             guard let target = section.items.first(where: { other in
                                                 guard other.card.id != item.card.id,
                                                       let f = rowFrames[other.card.id] else { return false }
@@ -272,6 +280,7 @@ struct DeckDetailView: View {
                                         .onEnded { _ in
                                             draggingCardID = nil
                                             dragOffsetY = 0
+                                            dragStartMidY = nil
                                         }
                                 )
                             DeckEntryRowView(
