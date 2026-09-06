@@ -1,6 +1,5 @@
 import SwiftData
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// 單一牌組編輯，依等級分組；卡表／統計／缺卡切換，卡表可切圖片或清單（§4.3）
 struct DeckDetailView: View {
@@ -13,10 +12,11 @@ struct DeckDetailView: View {
     @State private var detailCard: Card?
     @State private var isEditing = false
     @State private var isPickingCover = false
-    /// 拖曳排序中，正在拖的卡片 id——用舊式 onDrag/onDrop(delegate:) 而不是
-    /// .draggable/.dropDestination，因為後者在 List 裡跟 Section、Button
-    /// 標籤混用時，實測長按會浮起來但放開完全不會真的換位置
+    /// 拖曳排序：完全手刻（不用系統 drag-and-drop，見 cardList 內註解），
+    /// 正在拖的卡片 id、手指相對按下時的位移、每列在共用座標空間的位置
     @State private var draggingCardID: String?
+    @State private var dragOffsetY: CGFloat = 0
+    @State private var rowFrames: [String: CGRect] = [:]
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
     /// 卡表的顯示方式（與圖鑑分頁各自記憶）
@@ -236,32 +236,69 @@ struct DeckDetailView: View {
             ForEach(sections, id: \.title) { section in
                 Section("\(section.title) (\(section.count))") {
                     ForEach(section.items, id: \.card.id) { item in
-                        DeckEntryRowView(
-                            deck: deck,
-                            card: item.card,
-                            totalForName: DeckValidator.nameCount(of: item.card,
-                                                                  in: countedItems),
-                            editable: isEditing) {
-                            detailCard = item.card
+                        HStack(spacing: 0) {
+                            // 拖曳排序：完全手刻，不依賴系統的 drag-and-drop（.draggable／
+                            // .onDrag／.dropDestination 這幾種系統 API 實測在這個 List 裡都
+                            // 長按會浮起來但放開不會真的換位置，而且完全沒辦法在模擬器上
+                            // 驗證）。改成跟 Android 同樣的思路：只在把手圖示這塊小範圍量
+                            // 手指位置，自己判斷該跟哪一列交換，直接呼叫 moveCards。
+                            // DragGesture 的 translation 是相對「手指按下時」算的絕對位移，
+                            // 不受交換後版面重排影響，不需要像 Android 那樣另外補償位移。
+                            Image(systemName: "line.3.horizontal")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28, height: 44)
+                                .contentShape(Rectangle())
+                                .gesture(
+                                    DragGesture(minimumDistance: 2, coordinateSpace: .named("cardListSpace"))
+                                        .onChanged { value in
+                                            if draggingCardID != item.card.id {
+                                                draggingCardID = item.card.id
+                                            }
+                                            dragOffsetY = value.translation.height
+                                            guard let myFrame = rowFrames[item.card.id] else { return }
+                                            let draggedCenterY = myFrame.midY + dragOffsetY
+                                            guard let target = section.items.first(where: { other in
+                                                guard other.card.id != item.card.id,
+                                                      let f = rowFrames[other.card.id] else { return false }
+                                                return draggedCenterY >= f.minY && draggedCenterY <= f.maxY
+                                            }),
+                                                  let from = section.items.firstIndex(where: { $0.card.id == item.card.id }),
+                                                  let to = section.items.firstIndex(where: { $0.card.id == target.card.id })
+                                            else { return }
+                                            moveCards(in: section, from: IndexSet(integer: from),
+                                                     to: to > from ? to + 1 : to)
+                                        }
+                                        .onEnded { _ in
+                                            draggingCardID = nil
+                                            dragOffsetY = 0
+                                        }
+                                )
+                            DeckEntryRowView(
+                                deck: deck,
+                                card: item.card,
+                                totalForName: DeckValidator.nameCount(of: item.card,
+                                                                      in: countedItems),
+                                editable: isEditing) {
+                                detailCard = item.card
+                            }
                         }
-                        // 不用先切「排序模式」，長按任一列直接拖到想要的位置放開即可。
-                        // 用舊式 onDrag/onDrop(delegate:)，不用 .draggable/.dropDestination——
-                        // 後者在 List 裡跟這一列的 Button 標籤混用時，實測長按會浮起來，
-                        // 但放開完全不會真的換位置（drop 沒有被觸發）
-                        .onDrag {
-                            draggingCardID = item.card.id
-                            return NSItemProvider(object: item.card.id as NSString)
-                        }
-                        .onDrop(of: [.text], delegate: CardReorderDropDelegate(
-                            targetID: item.card.id,
-                            items: section.items,
-                            draggingID: $draggingCardID,
-                            onMove: { from, to in moveCards(in: section, from: from, to: to) }
-                        ))
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: RowFramePreferenceKey.self,
+                                    value: [item.card.id: geo.frame(in: .named("cardListSpace"))])
+                            }
+                        )
+                        .offset(y: draggingCardID == item.card.id ? dragOffsetY : 0)
+                        .zIndex(draggingCardID == item.card.id ? 1 : 0)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 16))
                     }
                 }
             }
         }
+        .coordinateSpace(name: "cardListSpace")
+        .onPreferenceChange(RowFramePreferenceKey.self) { rowFrames = $0 }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(AppSurface.background)
@@ -272,6 +309,13 @@ struct DeckDetailView: View {
                                        systemImage: "rectangle.stack.badge.plus",
                                        description: Text("到「圖鑑」分頁選擇此牌組後按＋加卡"))
             }
+        }
+    }
+
+    private struct RowFramePreferenceKey: PreferenceKey {
+        static var defaultValue: [String: CGRect] = [:]
+        static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+            value.merge(nextValue()) { _, new in new }
         }
     }
 
@@ -288,32 +332,6 @@ struct DeckDetailView: View {
             if let next = newValues.next() { fullOrder[i] = next }
         }
         deck.setCardOrder(fullOrder, context: context)
-    }
-
-    /// 拖曳排序放開時的目標——手指拖著的那張卡「進入」某一列的範圍就觸發一次
-    /// 交換，跟 Android 那邊「量每列位置決定交換」是同一個思路
-    private struct CardReorderDropDelegate: DropDelegate {
-        let targetID: String
-        let items: [DeckExporter.CardCount]
-        @Binding var draggingID: String?
-        let onMove: (IndexSet, Int) -> Void
-
-        func dropEntered(info: DropInfo) {
-            guard let draggingID, draggingID != targetID,
-                  let from = items.firstIndex(where: { $0.card.id == draggingID }),
-                  let to = items.firstIndex(where: { $0.card.id == targetID })
-            else { return }
-            onMove(IndexSet(integer: from), to > from ? to + 1 : to)
-        }
-
-        func dropUpdated(info: DropInfo) -> DropProposal? {
-            DropProposal(operation: .move)
-        }
-
-        func performDrop(info: DropInfo) -> Bool {
-            draggingID = nil
-            return true
-        }
     }
 
     private struct LevelSection {
