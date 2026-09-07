@@ -1,7 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// 單列：總張數 + 可展開的刷版明細（§4.4.2）
+/// 牌組卡表單列。點擊開啟卡片詳情；刷版與張數調整集中在詳情頁處理。
 struct DeckEntryRowView: View {
     let deck: Deck
     let card: Card
@@ -12,8 +12,6 @@ struct DeckEntryRowView: View {
     var onTap: () -> Void
 
     @Environment(\.modelContext) private var context
-    @State private var expanded = false
-
     private var overLimit: Bool { totalForName > DeckValidator.nameLimit }
     private var cardTotal: Int { deck.count(of: card) }
 
@@ -26,12 +24,7 @@ struct DeckEntryRowView: View {
     }
 
     var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            printingRows
-        } label: {
-            label
-        }
-        .swipeActions(edge: .trailing) {
+        label.swipeActions(edge: .trailing) {
             if editable {
                 Button(role: .destructive) {
                     for printing in card.printings {
@@ -86,38 +79,4 @@ struct DeckEntryRowView: View {
         .buttonStyle(.plain)
     }
 
-    private var printingRows: some View {
-        ForEach(card.printings) { printing in
-            let count = deck.entry(forPrinting: printing.id)?.count ?? 0
-            HStack {
-                Text(printing.rarity)
-                    .font(.caption.bold())
-                    .frame(width: 40, alignment: .leading)
-                Text(printing.id)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if editable {
-                    CountStepper(count: count) { delta in
-                        deck.adjust(printingID: printing.id, by: delta, context: context)
-                    }
-                } else {
-                    Text("×\(count)")
-                        .font(.body.monospacedDigit())
-                        .foregroundStyle(count > 0 ? .primary : .tertiary)
-                }
-            }
-            // 長按轉換刷版：1 張直接換稀有度，免一減一加（§4.4.2）
-            .contextMenu {
-                if editable, count > 0, card.printings.count > 1 {
-                    ForEach(card.printings.filter { $0.id != printing.id }) { target in
-                        Button("轉換 1 張為 \(target.rarity)（\(target.id)）") {
-                            deck.convert(from: printing.id, to: target.id, context: context)
-                        }
-                    }
-                }
-            }
-        }
-        .listRowInsets(EdgeInsets(top: 0, leading: 32, bottom: 0, trailing: 16))
-    }
 }
