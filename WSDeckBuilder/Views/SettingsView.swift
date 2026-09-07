@@ -14,8 +14,8 @@ struct SettingsView: View {
     @State private var confirmPrefetch: PrefetchScope?
     @State private var confirmClear = false
     @AppStorage("aiChatButtonEnabled") private var aiChatButtonEnabled = true
-    @AppStorage("aiProxyURL") private var aiProxyURL = ""
-    @AppStorage("aiProxySharedSecret") private var aiProxySharedSecret = ""
+    @AppStorage("aiProxyURL") private var aiProxyURL = AIProxyDefaults.url
+    @AppStorage("aiProxySharedSecret") private var aiProxySharedSecret = AIProxyDefaults.sharedSecret
 
     enum PrefetchScope: String, Identifiable {
         case normalOnly, allPrintings

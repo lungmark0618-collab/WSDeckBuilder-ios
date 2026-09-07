@@ -85,17 +85,30 @@ struct RemoteAIAssistantService: AIAssistantService {
     }
 }
 
+/// 內建的代理伺服器預設值——App 出貨就能直接用，不用使用者自己跑去設定頁
+/// 填網址／密鑰；設定頁的欄位還在，之後要換伺服器或密鑰再改就好
+enum AIProxyDefaults {
+    static let url = "https://wsdeck-ai-proxy.marklung0618.workers.dev"
+
+    /// 真正的密鑰不寫進 public repo：這裡故意放假值。本機建置前把下面這行
+    /// 換成 `wrangler secret put APP_SHARED_SECRET` 時設定的那組真正的值，
+    /// 建置完再改回假值；或者不改這裡，直接在 App「設定 → AI 服務設定」
+    /// 手動填入真正的值，一樣會覆蓋掉這裡的預設值
+    static let sharedSecret = "REPLACE_WITH_REAL_SECRET_BEFORE_BUILDING"
+}
+
 /// 依「設定」頁目前存的代理伺服器網址／密鑰，決定要用真的服務還是引導訊息，
-/// 每次問答都重新讀一次，設定改了不用重開 App
+/// 每次問答都重新讀一次，設定改了不用重開 App。使用者還沒打開過設定頁時
+/// UserDefaults 裡不會有值，這裡退回內建預設值，而不是引導訊息
 enum AIAssistantServiceResolver {
     static func current() -> AIAssistantService {
         let defaults = UserDefaults.standard
-        guard let urlString = defaults.string(forKey: "aiProxyURL"),
-              !urlString.trimmingCharacters(in: .whitespaces).isEmpty,
+        let urlString = defaults.string(forKey: "aiProxyURL") ?? AIProxyDefaults.url
+        guard !urlString.trimmingCharacters(in: .whitespaces).isEmpty,
               let url = URL(string: urlString) else {
             return UnconfiguredAIAssistantService()
         }
-        let secret = defaults.string(forKey: "aiProxySharedSecret") ?? ""
+        let secret = defaults.string(forKey: "aiProxySharedSecret") ?? AIProxyDefaults.sharedSecret
         return RemoteAIAssistantService(baseURL: url, sharedSecret: secret)
     }
 }
