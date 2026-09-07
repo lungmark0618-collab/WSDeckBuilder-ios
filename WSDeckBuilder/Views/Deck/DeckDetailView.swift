@@ -25,6 +25,12 @@ struct DeckDetailView: View {
     /// 因為重新整理的瞬間被判定成「消失」重繪
     @State private var draggingSectionTitle: String?
     @State private var liveSectionItems: [DeckExporter.CardCount] = []
+    /// 換位後先暫停判定下一次交換，等 rowFrames 真的回報新版面（見 cardList
+    /// 內的 onChange）才恢復——手指滑快時，連續觸控事件之間 SwiftUI 可能
+    /// 還沒把上一次交換的新位置量完，用還沒更新的舊位置判斷下一次要跟誰
+    /// 交換就會判斷錯，一路亂跳雪崩（跟 Android 那次雪崩同樣的道理，機制
+    /// 不同：那邊是拖曳事件密度太高追不上排版更新）
+    @State private var awaitingLayoutRefresh = false
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
     /// 分享是高頻操作，獨立成底部工具列按鈕，不用再點進「⋯」選單（§ PRD 分享按鈕）
@@ -288,6 +294,10 @@ struct DeckDetailView: View {
                                                 dragStartMidY = rowFrames[item.card.id]?.midY
                                             }
                                             dragOffsetY = value.translation.height
+                                            // 上一次交換的排版還沒確認回報最新位置前，先別再判定
+                                            // 下一次交換——手指真的移動還是會繼續反映在 dragOffsetY
+                                            // 上（視覺照樣跟著跑），只是暫停「要不要交換」的判斷
+                                            if awaitingLayoutRefresh { return }
                                             guard let startMidY = dragStartMidY else { return }
                                             let draggedCenterY = startMidY + dragOffsetY
                                             guard let target = liveSectionItems.first(where: { other in
@@ -304,6 +314,7 @@ struct DeckDetailView: View {
                                             // 偶爾還會在重新整理的瞬間被判定成「消失」重繪
                                             liveSectionItems.move(fromOffsets: IndexSet(integer: from),
                                                                   toOffset: to > from ? to + 1 : to)
+                                            awaitingLayoutRefresh = true
                                         }
                                         .onEnded { _ in
                                             if !liveSectionItems.isEmpty {
@@ -314,6 +325,7 @@ struct DeckDetailView: View {
                                             liveSectionItems = []
                                             dragOffsetY = 0
                                             dragStartMidY = nil
+                                            awaitingLayoutRefresh = false
                                         }
                                 )
                             DeckEntryRowView(
@@ -340,7 +352,11 @@ struct DeckDetailView: View {
             }
         }
         .coordinateSpace(name: "cardListSpace")
-        .onPreferenceChange(RowFramePreferenceKey.self) { rowFrames = $0 }
+        .onPreferenceChange(RowFramePreferenceKey.self) { newFrames in
+            rowFrames = newFrames
+            // 排版真的回報新位置了，才恢復判定下一次交換
+            awaitingLayoutRefresh = false
+        }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(AppSurface.background)

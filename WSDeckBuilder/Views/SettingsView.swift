@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var prefetchProgress: (done: Int, total: Int)?
     @State private var confirmPrefetch: PrefetchScope?
     @State private var confirmClear = false
+    @AppStorage("aiChatButtonEnabled") private var aiChatButtonEnabled = true
 
     enum PrefetchScope: String, Identifiable {
         case normalOnly, allPrintings
@@ -33,6 +34,7 @@ struct SettingsView: View {
                 } footer: {
                     Text("字體大小與粗細、文字與背景顏色、強調色。")
                 }
+                aiChatSection
                 cardDataSection
                 notificationSection
                 networkSection
@@ -43,6 +45,16 @@ struct SettingsView: View {
             .clearsGlassTabBar()
             .navigationTitle("設定")
             .task { await refreshCacheInfo() }
+        }
+    }
+
+    // MARK: - 問 AI 浮動按鈕
+
+    private var aiChatSection: some View {
+        Section {
+            Toggle("顯示「問 AI」浮動按鈕", isOn: $aiChatButtonEnabled)
+        } footer: {
+            Text("可以拖到畫面任何位置；放著不動一段時間會自動收到畫面邊緣，不擋畫面。")
         }
     }
 
