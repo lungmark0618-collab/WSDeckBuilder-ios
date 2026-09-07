@@ -29,3 +29,73 @@ struct MockAIAssistantService: AIAssistantService {
         return reply
     }
 }
+
+/// 使用者還沒到「設定」頁填代理伺服器網址時的替身，直接回一個引導訊息，
+/// 不會真的發網路請求
+struct UnconfiguredAIAssistantService: AIAssistantService {
+    func ask(question: String,
+             history: [AIChatMessage],
+             cardContext: AICardContext?,
+             rulesContext: String?) async throws -> String {
+        "尚未設定 AI 服務。請到「設定 → AI 服務設定」填入代理伺服器的網址與密鑰後再試一次。"
+    }
+}
+
+/// 呼叫自架的輕量代理伺服器（見 ai-proxy/），伺服器再轉打 OpenAI，
+/// App 本身不帶 OpenAI Key，只帶一組共用密鑰擋住隨便打進來的請求
+struct RemoteAIAssistantService: AIAssistantService {
+    let baseURL: URL
+    let sharedSecret: String
+
+    private struct RequestBody: Encodable {
+        struct Turn: Encodable { let role: String; let text: String }
+        let question: String
+        let history: [Turn]
+        let cardContext: String?
+        let rulesContext: String?
+    }
+
+    private struct ResponseBody: Decodable {
+        let answer: String?
+        let error: String?
+    }
+
+    func ask(question: String,
+             history: [AIChatMessage],
+             cardContext: AICardContext?,
+             rulesContext: String?) async throws -> String {
+        var request = URLRequest(url: baseURL.appendingPathComponent("ask"))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !sharedSecret.isEmpty {
+            request.setValue(sharedSecret, forHTTPHeaderField: "X-App-Secret")
+        }
+        let turns = history.map { RequestBody.Turn(role: $0.role == .assistant ? "assistant" : "user", text: $0.text) }
+        let body = RequestBody(question: question, history: turns,
+                               cardContext: cardContext?.summary, rulesContext: rulesContext)
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        let decoded = try JSONDecoder().decode(ResponseBody.self, from: data)
+        if let error = decoded.error { throw NSError(domain: "AIProxy", code: 0, userInfo: [NSLocalizedDescriptionKey: error]) }
+        return decoded.answer ?? ""
+    }
+}
+
+/// 依「設定」頁目前存的代理伺服器網址／密鑰，決定要用真的服務還是引導訊息，
+/// 每次問答都重新讀一次，設定改了不用重開 App
+enum AIAssistantServiceResolver {
+    static func current() -> AIAssistantService {
+        let defaults = UserDefaults.standard
+        guard let urlString = defaults.string(forKey: "aiProxyURL"),
+              !urlString.trimmingCharacters(in: .whitespaces).isEmpty,
+              let url = URL(string: urlString) else {
+            return UnconfiguredAIAssistantService()
+        }
+        let secret = defaults.string(forKey: "aiProxySharedSecret") ?? ""
+        return RemoteAIAssistantService(baseURL: url, sharedSecret: secret)
+    }
+}

@@ -14,6 +14,8 @@ struct SettingsView: View {
     @State private var confirmPrefetch: PrefetchScope?
     @State private var confirmClear = false
     @AppStorage("aiChatButtonEnabled") private var aiChatButtonEnabled = true
+    @AppStorage("aiProxyURL") private var aiProxyURL = ""
+    @AppStorage("aiProxySharedSecret") private var aiProxySharedSecret = ""
 
     enum PrefetchScope: String, Identifiable {
         case normalOnly, allPrintings
@@ -35,6 +37,7 @@ struct SettingsView: View {
                     Text("字體大小與粗細、文字與背景顏色、強調色。")
                 }
                 aiChatSection
+                aiServiceSection
                 cardDataSection
                 notificationSection
                 networkSection
@@ -55,6 +58,22 @@ struct SettingsView: View {
             Toggle("顯示「問 AI」浮動按鈕", isOn: $aiChatButtonEnabled)
         } footer: {
             Text("可以拖到畫面任何位置；放著不動一段時間會自動收到畫面邊緣，不擋畫面。")
+        }
+    }
+
+    private var aiServiceSection: some View {
+        Section {
+            TextField("服務網址", text: $aiProxyURL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            SecureField("服務密鑰", text: $aiProxySharedSecret)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        } header: {
+            Text("AI 服務設定")
+        } footer: {
+            Text("問 AI 功能要接自架的代理伺服器才能真的回答問題，網址與密鑰在部署代理伺服器（ai-proxy/）之後取得，填在這裡即可，不用重開 App。留空時「問 AI」會顯示引導訊息。")
         }
     }
 

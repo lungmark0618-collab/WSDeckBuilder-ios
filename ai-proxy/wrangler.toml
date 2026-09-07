@@ -1,0 +1,6 @@
+name = "wsdeck-ai-proxy"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# OPENAI_API_KEY、APP_SHARED_SECRET 不寫在這裡（會進 git），
+# 用 `wrangler secret put` 設定，見 README。

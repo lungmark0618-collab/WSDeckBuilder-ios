@@ -13,10 +13,12 @@ final class AIChatCoordinator {
     /// 目前情境卡片；換一張卡再開啟聊天視窗，會提示使用者情境換了
     var cardContext: AICardContext?
 
-    private let service: AIAssistantService
+    /// 固定注入用於測試／預覽；正式使用留 nil，每次送出問題時依「設定」頁
+    /// 目前的內容重新決定要用真服務還是引導訊息
+    private let fixedService: AIAssistantService?
 
-    init(service: AIAssistantService = MockAIAssistantService()) {
-        self.service = service
+    init(service: AIAssistantService? = nil) {
+        self.fixedService = service
     }
 
     /// 從卡片詳情頁的「問 AI」按鈕呼叫——換卡要提示一下，不然使用者以為
@@ -49,6 +51,7 @@ final class AIChatCoordinator {
         let history = Array(messages.dropLast(2))
         let context = cardContext
         let rules = RulesReference.text
+        let service = fixedService ?? AIAssistantServiceResolver.current()
 
         Task {
             do {
