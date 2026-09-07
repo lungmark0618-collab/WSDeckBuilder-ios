@@ -251,101 +251,38 @@ struct DeckDetailView: View {
     // MARK: - 卡表
 
     private var cardList: some View {
-        List {
-            ForEach(sections, id: \.title) { section in
-                let displayItems = section.title == draggingSectionTitle
-                    ? liveSectionItems
-                    : section.items
-                Section("\(section.title) (\(section.count))") {
-                    ForEach(displayItems, id: \.card.id) { item in
-                        // 外層只負責 List 排版與量測；內層才做視覺位移，確保
-                        // rowFrames 是未受 offset 影響的真正列位置。
-                        ZStack(alignment: .leading) {
-                            HStack(spacing: 0) {
-                                Image(systemName: "line.3.horizontal")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 28, height: 44)
-                                    .contentShape(Rectangle())
-                                    .gesture(
-                                        DragGesture(minimumDistance: 2,
-                                                    coordinateSpace: .named("cardListSpace"))
-                                            .onChanged { value in
-                                                if draggingCardID != item.card.id {
-                                                    draggingCardID = item.card.id
-                                                    draggingSectionTitle = section.title
-                                                    liveSectionItems = section.items
-                                                    dragOffsetY = 0
-                                                    dragLastTranslationY = 0
-                                                    pendingSwapOldMidY = nil
-                                                }
+        ScrollView {
+            // Android 版使用一般 Column。這裡也讓所有列同時存在於固定 VStack，
+            // 避免 List 在資料換位時回收／重建正在接收拖曳手勢的 row。
+            VStack(alignment: .leading, spacing: Spacing.s16) {
+                ForEach(sections, id: \.title) { section in
+                    let displayItems = section.title == draggingSectionTitle
+                        ? liveSectionItems
+                        : section.items
 
-                                                // Android 的 dragAmount 是事件增量；SwiftUI
-                                                // translation 是總量，必須先轉成增量，才不會
-                                                // 在下一個事件覆蓋換位後加上的位置補償。
-                                                let delta = value.translation.height - dragLastTranslationY
-                                                dragLastTranslationY = value.translation.height
-                                                dragOffsetY += delta
+                    VStack(alignment: .leading, spacing: Spacing.s8) {
+                        Text("\(section.title) (\(section.count))")
+                            .font(.headline)
+                            .padding(.horizontal, Spacing.s16)
 
-                                                guard pendingSwapOldMidY == nil,
-                                                      let draggedFrame = rowFrames[item.card.id]
-                                                else { return }
+                        VStack(spacing: 0) {
+                            ForEach(Array(displayItems.enumerated()), id: \.element.card.id) { index, item in
+                                cardListRow(item, in: section)
 
-                                                let draggedCenterY = draggedFrame.midY + dragOffsetY
-                                                guard let targetIndex = liveSectionItems.firstIndex(where: {
-                                                    guard $0.card.id != item.card.id,
-                                                          let frame = rowFrames[$0.card.id]
-                                                    else { return false }
-                                                    return draggedCenterY >= frame.minY
-                                                        && draggedCenterY <= frame.maxY
-                                                }),
-                                                      let currentIndex = liveSectionItems.firstIndex(where: {
-                                                          $0.card.id == item.card.id
-                                                      }),
-                                                      targetIndex != currentIndex
-                                                else { return }
-
-                                                pendingSwapOldMidY = draggedFrame.midY
-                                                var moved = liveSectionItems
-                                                let draggedItem = moved.remove(at: currentIndex)
-                                                moved.insert(draggedItem, at: targetIndex)
-                                                liveSectionItems = moved
-                                            }
-                                            .onEnded { _ in
-                                                if !liveSectionItems.isEmpty {
-                                                    commitOrder(liveSectionItems, in: section)
-                                                }
-                                                draggingCardID = nil
-                                                draggingSectionTitle = nil
-                                                liveSectionItems = []
-                                                dragOffsetY = 0
-                                                dragLastTranslationY = 0
-                                                pendingSwapOldMidY = nil
-                                            }
-                                    )
-                                DeckEntryRowView(
-                                    deck: deck,
-                                    card: item.card,
-                                    totalForName: DeckValidator.nameCount(of: item.card,
-                                                                          in: countedItems),
-                                    editable: isEditing) {
-                                    detailCard = item.card
+                                if index < displayItems.count - 1 {
+                                    Divider().padding(.leading, 52)
                                 }
                             }
-                            .offset(y: draggingCardID == item.card.id ? dragOffsetY : 0)
                         }
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(
-                                    key: RowFramePreferenceKey.self,
-                                    value: [item.card.id: geo.frame(in: .named("cardListSpace"))])
-                            }
-                        )
-                        .zIndex(draggingCardID == item.card.id ? 1 : 0)
-                        .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 16))
+                        .background(Color(.secondarySystemGroupedBackground),
+                                    in: RoundedRectangle(cornerRadius: 22,
+                                                         style: .continuous))
+                        .padding(.horizontal, Spacing.s16)
                     }
                 }
             }
+            .padding(.top, Spacing.s8)
+            .padding(.bottom, 140)
         }
         .coordinateSpace(name: "cardListSpace")
         .onPreferenceChange(RowFramePreferenceKey.self) { newFrames in
@@ -360,8 +297,6 @@ struct DeckDetailView: View {
                 pendingSwapOldMidY = nil
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(AppSurface.background)
         .clearsGlassTabBar()
         .overlay {
@@ -371,6 +306,95 @@ struct DeckDetailView: View {
                                        description: Text("到「圖鑑」分頁選擇此牌組後按＋加卡"))
             }
         }
+    }
+
+    private func cardListRow(_ item: DeckExporter.CardCount,
+                             in section: LevelSection) -> some View {
+        // 外層保留真正的排版位置；內層只畫出手指位移。
+        // 換位後再用新舊 frame 差補償，拖曳列便會留在手指下。
+        ZStack(alignment: .leading) {
+            HStack(spacing: 0) {
+                Image(systemName: "line.3.horizontal")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 56)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture(for: item, in: section))
+
+                DeckEntryRowView(
+                    deck: deck,
+                    card: item.card,
+                    totalForName: DeckValidator.nameCount(of: item.card, in: countedItems),
+                    editable: isEditing) {
+                        detailCard = item.card
+                    }
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.trailing, Spacing.s12)
+            .frame(minHeight: 56)
+            .offset(y: draggingCardID == item.card.id ? dragOffsetY : 0)
+        }
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: RowFramePreferenceKey.self,
+                    value: [item.card.id: geo.frame(in: .named("cardListSpace"))])
+            }
+        )
+        .zIndex(draggingCardID == item.card.id ? 1 : 0)
+    }
+
+    private func dragGesture(for item: DeckExporter.CardCount,
+                             in section: LevelSection) -> some Gesture {
+        DragGesture(minimumDistance: 2, coordinateSpace: .named("cardListSpace"))
+            .onChanged { value in
+                if draggingCardID != item.card.id {
+                    draggingCardID = item.card.id
+                    draggingSectionTitle = section.title
+                    liveSectionItems = section.items
+                    dragOffsetY = 0
+                    dragLastTranslationY = 0
+                    pendingSwapOldMidY = nil
+                }
+
+                let delta = value.translation.height - dragLastTranslationY
+                dragLastTranslationY = value.translation.height
+                dragOffsetY += delta
+
+                guard pendingSwapOldMidY == nil,
+                      let draggedFrame = rowFrames[item.card.id]
+                else { return }
+
+                let draggedCenterY = draggedFrame.midY + dragOffsetY
+                guard let targetIndex = liveSectionItems.firstIndex(where: {
+                    guard $0.card.id != item.card.id,
+                          let frame = rowFrames[$0.card.id]
+                    else { return false }
+                    return draggedCenterY >= frame.minY && draggedCenterY <= frame.maxY
+                }),
+                      let currentIndex = liveSectionItems.firstIndex(where: {
+                          $0.card.id == item.card.id
+                      }),
+                      targetIndex != currentIndex
+                else { return }
+
+                pendingSwapOldMidY = draggedFrame.midY
+                var moved = liveSectionItems
+                let draggedItem = moved.remove(at: currentIndex)
+                moved.insert(draggedItem, at: targetIndex)
+                liveSectionItems = moved
+            }
+            .onEnded { _ in
+                if !liveSectionItems.isEmpty {
+                    commitOrder(liveSectionItems, in: section)
+                }
+                draggingCardID = nil
+                draggingSectionTitle = nil
+                liveSectionItems = []
+                dragOffsetY = 0
+                dragLastTranslationY = 0
+                pendingSwapOldMidY = nil
+            }
     }
 
     private struct RowFramePreferenceKey: PreferenceKey {
