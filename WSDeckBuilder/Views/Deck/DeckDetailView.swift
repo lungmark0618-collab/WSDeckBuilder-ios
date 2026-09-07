@@ -12,22 +12,14 @@ struct DeckDetailView: View {
     @State private var detailCard: Card?
     @State private var isEditing = false
     @State private var isPickingCover = false
-    /// 拖曳排序：完全手刻（不用系統 drag-and-drop，見 cardList 內註解），
-    /// 正在拖的卡片 id、手指相對按下時的位移、每列在共用座標空間的位置
+    /// 拖曳排序狀態。做法與已驗證的 Android 版一致：每次只累加本次手指
+    /// 位移，換位後等版面回報拖曳列的新位置，再補償版面移動造成的落差。
     @State private var draggingCardID: String?
     @State private var dragOffsetY: CGFloat = 0
+    @State private var dragLastTranslationY: CGFloat = 0
     @State private var rowFrames: [String: CGRect] = [:]
-    /// 手指按下那一刻的版面快照。拖曳中的每次判定都只看這份固定資料，
-    /// 不讀取清單重排期間尚未穩定的 GeometryReader 回報
-    @State private var dragStartMidY: CGFloat?
-    @State private var dragInitialFrames: [String: CGRect] = [:]
-    @State private var dragInitialItems: [DeckExporter.CardCount] = []
-    @State private var dragInitialIndex: Int?
-    @State private var dragPreviewDestinationIndex: Int?
-    /// 拖曳中那個分區目前正在顯示的順序，只存在記憶體裡，放開才真的寫回
-    /// deck.cardOrder。之前每交換一次就呼叫 context.save()，導致每次觸發
-    /// SwiftData／@Query 重新整理，畫面在拖曳中一路卡頓，偶爾那一列還會
-    /// 因為重新整理的瞬間被判定成「消失」重繪
+    @State private var pendingSwapOldMidY: CGFloat?
+    @State private var draggingSectionTitle: String?
     @State private var liveSectionItems: [DeckExporter.CardCount] = []
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
@@ -261,87 +253,86 @@ struct DeckDetailView: View {
     private var cardList: some View {
         List {
             ForEach(sections, id: \.title) { section in
+                let displayItems = section.title == draggingSectionTitle
+                    ? liveSectionItems
+                    : section.items
                 Section("\(section.title) (\(section.count))") {
-                    // 手勢期間保持 ForEach 的實際順序不變。若直接改資料順序，List
-                    // 會把正在接收 DragGesture 的列搬到另一個索引並重新掛載，造成
-                    // 真機上手勢座標與列位置脫鉤。其他列只用 offset 做讓位預覽，
-                    // 放開後才把 liveSectionItems 一次寫回真正順序。
-                    ForEach(section.items, id: \.card.id) { item in
-                        HStack(spacing: 0) {
-                            // 拖曳排序：完全手刻，不依賴系統的 drag-and-drop（.draggable／
-                            // .onDrag／.dropDestination 這幾種系統 API 實測在這個 List 裡都
-                            // 長按會浮起來但放開不會真的換位置）。只在把手圖示這塊小範圍量
-                            // 手指位置，自己判斷該跟哪一列交換。DragGesture 的 translation
-                            // 是相對「手指按下時」算的絕對位移，不受交換後版面重排影響。
-                            Image(systemName: "line.3.horizontal")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 28, height: 44)
-                                .contentShape(Rectangle())
-                                .gesture(
-                                    DragGesture(minimumDistance: 2, coordinateSpace: .named("cardListSpace"))
-                                        .onChanged { value in
-                                            if draggingCardID != item.card.id {
-                                                draggingCardID = item.card.id
-                                                liveSectionItems = section.items
-                                                dragInitialItems = section.items
-                                                dragInitialIndex = section.items.firstIndex {
-                                                    $0.card.id == item.card.id
+                    ForEach(displayItems, id: \.card.id) { item in
+                        // 外層只負責 List 排版與量測；內層才做視覺位移，確保
+                        // rowFrames 是未受 offset 影響的真正列位置。
+                        ZStack(alignment: .leading) {
+                            HStack(spacing: 0) {
+                                Image(systemName: "line.3.horizontal")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 28, height: 44)
+                                    .contentShape(Rectangle())
+                                    .gesture(
+                                        DragGesture(minimumDistance: 2,
+                                                    coordinateSpace: .named("cardListSpace"))
+                                            .onChanged { value in
+                                                if draggingCardID != item.card.id {
+                                                    draggingCardID = item.card.id
+                                                    draggingSectionTitle = section.title
+                                                    liveSectionItems = section.items
+                                                    dragOffsetY = 0
+                                                    dragLastTranslationY = 0
+                                                    pendingSwapOldMidY = nil
                                                 }
-                                                dragInitialFrames = [:]
-                                                dragStartMidY = nil
-                                                dragPreviewDestinationIndex = dragInitialIndex
-                                            }
-                                            // 一打開牌組就立刻拖時，GeometryReader 可能尚未量完；
-                                            // 有資料後才凍結這次手勢使用的版面，之後不再追新版面
-                                            if dragStartMidY == nil {
-                                                guard let startFrame = rowFrames[item.card.id] else { return }
-                                                let sectionIDs = Set(section.items.map(\.card.id))
-                                                dragInitialFrames = rowFrames.filter {
-                                                    sectionIDs.contains($0.key)
-                                                }
-                                                dragStartMidY = startFrame.midY
-                                            }
-                                            dragOffsetY = value.translation.height
-                                            guard let startMidY = dragStartMidY,
-                                                  let initialIndex = dragInitialIndex
-                                            else { return }
-                                            let draggedCenterY = startMidY + dragOffsetY
-                                            let destination = dragDestinationIndex(
-                                                for: draggedCenterY,
-                                                from: initialIndex
-                                            )
-                                            dragPreviewDestinationIndex = destination
 
-                                            // 每次都由手勢開始時的原始順序產生結果，不在上一次
-                                            // 尚未完成排版的 liveSectionItems 上繼續交換，避免雪崩
-                                            var reordered = dragInitialItems
-                                            let draggedItem = reordered.remove(at: initialIndex)
-                                            reordered.insert(draggedItem, at: destination)
-                                            liveSectionItems = reordered
-                                        }
-                                        .onEnded { _ in
-                                            if !liveSectionItems.isEmpty {
-                                                commitOrder(liveSectionItems, in: section)
+                                                // Android 的 dragAmount 是事件增量；SwiftUI
+                                                // translation 是總量，必須先轉成增量，才不會
+                                                // 在下一個事件覆蓋換位後加上的位置補償。
+                                                let delta = value.translation.height - dragLastTranslationY
+                                                dragLastTranslationY = value.translation.height
+                                                dragOffsetY += delta
+
+                                                guard pendingSwapOldMidY == nil,
+                                                      let draggedFrame = rowFrames[item.card.id]
+                                                else { return }
+
+                                                let draggedCenterY = draggedFrame.midY + dragOffsetY
+                                                guard let targetIndex = liveSectionItems.firstIndex(where: {
+                                                    guard $0.card.id != item.card.id,
+                                                          let frame = rowFrames[$0.card.id]
+                                                    else { return false }
+                                                    return draggedCenterY >= frame.minY
+                                                        && draggedCenterY <= frame.maxY
+                                                }),
+                                                      let currentIndex = liveSectionItems.firstIndex(where: {
+                                                          $0.card.id == item.card.id
+                                                      }),
+                                                      targetIndex != currentIndex
+                                                else { return }
+
+                                                pendingSwapOldMidY = draggedFrame.midY
+                                                var moved = liveSectionItems
+                                                let draggedItem = moved.remove(at: currentIndex)
+                                                moved.insert(draggedItem, at: targetIndex)
+                                                liveSectionItems = moved
                                             }
-                                            draggingCardID = nil
-                                            liveSectionItems = []
-                                            dragOffsetY = 0
-                                            dragStartMidY = nil
-                                            dragInitialFrames = [:]
-                                            dragInitialItems = []
-                                            dragInitialIndex = nil
-                                            dragPreviewDestinationIndex = nil
-                                        }
-                                )
-                            DeckEntryRowView(
-                                deck: deck,
-                                card: item.card,
-                                totalForName: DeckValidator.nameCount(of: item.card,
-                                                                      in: countedItems),
-                                editable: isEditing) {
-                                detailCard = item.card
+                                            .onEnded { _ in
+                                                if !liveSectionItems.isEmpty {
+                                                    commitOrder(liveSectionItems, in: section)
+                                                }
+                                                draggingCardID = nil
+                                                draggingSectionTitle = nil
+                                                liveSectionItems = []
+                                                dragOffsetY = 0
+                                                dragLastTranslationY = 0
+                                                pendingSwapOldMidY = nil
+                                            }
+                                    )
+                                DeckEntryRowView(
+                                    deck: deck,
+                                    card: item.card,
+                                    totalForName: DeckValidator.nameCount(of: item.card,
+                                                                          in: countedItems),
+                                    editable: isEditing) {
+                                    detailCard = item.card
+                                }
                             }
+                            .offset(y: draggingCardID == item.card.id ? dragOffsetY : 0)
                         }
                         .background(
                             GeometryReader { geo in
@@ -350,7 +341,6 @@ struct DeckDetailView: View {
                                     value: [item.card.id: geo.frame(in: .named("cardListSpace"))])
                             }
                         )
-                        .offset(y: dragPreviewOffset(for: item.card.id))
                         .zIndex(draggingCardID == item.card.id ? 1 : 0)
                         .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 16))
                     }
@@ -360,6 +350,15 @@ struct DeckDetailView: View {
         .coordinateSpace(name: "cardListSpace")
         .onPreferenceChange(RowFramePreferenceKey.self) { newFrames in
             rowFrames = newFrames
+            // 只在正在拖曳的列確實回報新位置後才補償並解除等待；其他列
+            // 的 preference 更新不能提前放行下一次交換。
+            if let oldMidY = pendingSwapOldMidY,
+               let draggingCardID,
+               let newMidY = newFrames[draggingCardID]?.midY,
+               abs(newMidY - oldMidY) > 0.5 {
+                dragOffsetY += oldMidY - newMidY
+                pendingSwapOldMidY = nil
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -379,72 +378,6 @@ struct DeckDetailView: View {
         static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
             value.merge(nextValue()) { _, new in new }
         }
-    }
-
-    /// 用手勢開始時凍結的列中心判斷最終索引。只跨過手指確實越過中心的列，
-    /// 沒有量到的離屏列不參與，因此不會突然跳到分區底部。
-    private func dragDestinationIndex(for draggedCenterY: CGFloat,
-                                      from initialIndex: Int) -> Int {
-        var destination = initialIndex
-
-        if draggedCenterY >= (dragStartMidY ?? draggedCenterY) {
-            guard initialIndex + 1 < dragInitialItems.count else { return destination }
-            for index in (initialIndex + 1)..<dragInitialItems.count {
-                let id = dragInitialItems[index].card.id
-                guard let frame = dragInitialFrames[id] else { break }
-                if draggedCenterY >= frame.midY {
-                    destination = index
-                } else {
-                    break
-                }
-            }
-        } else if initialIndex > 0 {
-            for index in stride(from: initialIndex - 1, through: 0, by: -1) {
-                let id = dragInitialItems[index].card.id
-                guard let frame = dragInitialFrames[id] else { break }
-                if draggedCenterY <= frame.midY {
-                    destination = index
-                } else {
-                    break
-                }
-            }
-        }
-
-        return destination
-    }
-
-    /// 拖曳列直接跟著手指；被跨過的列只做視覺讓位，不改 ForEach 身分或順序。
-    /// 讓位距離由初始 frame 推算，可包含不同列高與 List 的列間距。
-    private func dragPreviewOffset(for cardID: String) -> CGFloat {
-        guard let draggingCardID,
-              let initialIndex = dragInitialIndex,
-              let destinationIndex = dragPreviewDestinationIndex,
-              let itemIndex = dragInitialItems.firstIndex(where: { $0.card.id == cardID })
-        else { return 0 }
-
-        if cardID == draggingCardID {
-            return dragOffsetY
-        }
-
-        if destinationIndex > initialIndex,
-           itemIndex > initialIndex,
-           itemIndex <= destinationIndex,
-           dragInitialItems.indices.contains(initialIndex + 1),
-           let initialFrame = dragInitialFrames[dragInitialItems[initialIndex].card.id],
-           let nextFrame = dragInitialFrames[dragInitialItems[initialIndex + 1].card.id] {
-            return initialFrame.minY - nextFrame.minY
-        }
-
-        if destinationIndex < initialIndex,
-           itemIndex >= destinationIndex,
-           itemIndex < initialIndex,
-           dragInitialItems.indices.contains(initialIndex - 1),
-           let initialFrame = dragInitialFrames[dragInitialItems[initialIndex].card.id],
-           let previousFrame = dragInitialFrames[dragInitialItems[initialIndex - 1].card.id] {
-            return initialFrame.maxY - previousFrame.maxY
-        }
-
-        return 0
     }
 
     /// 把某個分區內拖曳後的新順序，寫回整副牌的排序記錄——其他分區的位置不動
