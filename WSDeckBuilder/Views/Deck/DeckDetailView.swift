@@ -27,6 +27,8 @@ struct DeckDetailView: View {
     @State private var liveSectionItems: [DeckExporter.CardCount] = []
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
+    /// 分享是高頻操作，獨立成底部工具列按鈕，不用再點進「⋯」選單（§ PRD 分享按鈕）
+    @State private var showShareOptions = false
     /// 卡表的顯示方式（與圖鑑分頁各自記憶）
     @AppStorage("deckUsesGrid") private var usesGrid = true
     /// 出好的牌組圖片；有值就跳分享面板
@@ -88,6 +90,15 @@ struct DeckDetailView: View {
                     .accessibilityLabel(usesGrid ? "改為清單顯示" : "改為圖片顯示")
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showShareOptions = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .disabled(deck.entries.isEmpty)
+                .accessibilityLabel("分享")
+            }
             ToolbarItem(placement: .topBarTrailing) { actionMenu }
             ToolbarItem(placement: .confirmationAction) {
                 if isEditing {
@@ -116,6 +127,10 @@ struct DeckDetailView: View {
         }
         .sheet(isPresented: $showQRPresent) {
             DeckQRPresentView(deck: deck)
+        }
+        .confirmationDialog("分享", isPresented: $showShareOptions, titleVisibility: .visible) {
+            Button("生成 QR Code") { showQRPresent = true }
+            Button("匯出牌組圖片（可掃回）") { Task { await makeDeckImage() } }
         }
     }
 
@@ -450,6 +465,12 @@ struct DeckDetailView: View {
         .toolbar {
             if mode == .shortage, !shortages.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: CollectionStore.shortageText(deck: deck, shortages: shortages)) {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .accessibilityLabel("匯出缺卡清單")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     Button("全部收齊") { fillAll() }
                         .font(.caption)
                 }
@@ -550,36 +571,15 @@ struct DeckDetailView: View {
                 }
                 .disabled(deck.entries.isEmpty)
             }
-            Section {
-                Button {
-                    showQRPresent = true
-                } label: {
-                    Label("出示 QR 給朋友掃", systemImage: "qrcode")
-                }
-                .disabled(deck.entries.isEmpty)
-            }
+            // 出示 QR／匯出牌組圖片已搬到底部工具列獨立的「分享」按鈕；
+            // 匯出缺卡清單搬到「缺卡」分頁自己的按鈕；JSON 備份先暫時下架，
+            // 等備份機制重新設計後再放回來（§ PRD）
             Section("匯出") {
-                Button {
-                    Task { await makeDeckImage() }
-                } label: {
-                    Label("匯出牌組圖片（可掃回）", systemImage: "photo")
-                }
-                .disabled(deck.entries.isEmpty || isRenderingImage)
-
                 ShareLink(item: DeckExporter.simpleText(deck: deck, database: database)) {
                     Label("匯出牌表（簡潔版）", systemImage: "doc.plaintext")
                 }
                 ShareLink(item: DeckExporter.collectorText(deck: deck, database: database)) {
                     Label("匯出收牌清單（含刷版）", systemImage: "list.bullet.rectangle")
-                }
-                ShareLink(item: CollectionStore.shortageText(deck: deck, shortages: shortages)) {
-                    Label("匯出缺卡清單", systemImage: "cart")
-                }
-                if let url = DeckExporter.jsonFile(deck: deck) {
-                    ShareLink(item: url,
-                              preview: SharePreview("\(deck.name).json")) {
-                        Label("匯出 JSON 備份（可再匯入）", systemImage: "curlybraces")
-                    }
                 }
             }
         } label: {

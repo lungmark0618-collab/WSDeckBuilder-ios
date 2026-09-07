@@ -6,6 +6,7 @@ struct RootTabView: View {
     @Environment(CardDatabase.self) private var database
     @Environment(OnboardingCoordinator.self) private var onboarding
     @Environment(DeckImportCoordinator.self) private var deckImport
+    @Environment(AIChatCoordinator.self) private var aiChat
     // 使用者要求首頁（官網公告）取代圖鑑成為開場畫面
     @State private var selectedTab: Tab = .home
 
@@ -31,6 +32,12 @@ struct RootTabView: View {
                 }
             }
             GlassTabBar(items: tabs, selection: $selectedTab)
+        }
+        .overlay(alignment: .bottomTrailing) { FloatingChatButton() }
+        .sheet(isPresented: Binding(
+            get: { aiChat.isPresented },
+            set: { aiChat.isPresented = $0 })) {
+            AIChatSheet()
         }
         .background(AppSurface.background.ignoresSafeArea())
         .overlay {
