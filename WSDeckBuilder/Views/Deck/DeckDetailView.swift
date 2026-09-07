@@ -23,14 +23,11 @@ struct DeckDetailView: View {
     @State private var dragInitialFrames: [String: CGRect] = [:]
     @State private var dragInitialItems: [DeckExporter.CardCount] = []
     @State private var dragInitialIndex: Int?
-    /// 清單把拖曳列搬到新索引時，版面本身已經造成的位移。顯示 offset 必須
-    /// 扣掉這段距離，否則完整手指位移會再加到新位置上，造成位移加倍
-    @State private var dragLayoutDisplacementY: CGFloat = 0
+    @State private var dragPreviewDestinationIndex: Int?
     /// 拖曳中那個分區目前正在顯示的順序，只存在記憶體裡，放開才真的寫回
     /// deck.cardOrder。之前每交換一次就呼叫 context.save()，導致每次觸發
     /// SwiftData／@Query 重新整理，畫面在拖曳中一路卡頓，偶爾那一列還會
     /// 因為重新整理的瞬間被判定成「消失」重繪
-    @State private var draggingSectionTitle: String?
     @State private var liveSectionItems: [DeckExporter.CardCount] = []
     /// 缺卡頁是否連已收齊的一起顯示
     @State private var showCollected = false
@@ -264,11 +261,12 @@ struct DeckDetailView: View {
     private var cardList: some View {
         List {
             ForEach(sections, id: \.title) { section in
-                // 拖曳中這個分區用記憶體裡的 liveSectionItems 即時顯示，其他分區
-                // 照常用 section.items；放開才把 liveSectionItems 寫回 deck.cardOrder
-                let displayItems = section.title == draggingSectionTitle ? liveSectionItems : section.items
                 Section("\(section.title) (\(section.count))") {
-                    ForEach(displayItems, id: \.card.id) { item in
+                    // 手勢期間保持 ForEach 的實際順序不變。若直接改資料順序，List
+                    // 會把正在接收 DragGesture 的列搬到另一個索引並重新掛載，造成
+                    // 真機上手勢座標與列位置脫鉤。其他列只用 offset 做讓位預覽，
+                    // 放開後才把 liveSectionItems 一次寫回真正順序。
+                    ForEach(section.items, id: \.card.id) { item in
                         HStack(spacing: 0) {
                             // 拖曳排序：完全手刻，不依賴系統的 drag-and-drop（.draggable／
                             // .onDrag／.dropDestination 這幾種系統 API 實測在這個 List 裡都
@@ -285,7 +283,6 @@ struct DeckDetailView: View {
                                         .onChanged { value in
                                             if draggingCardID != item.card.id {
                                                 draggingCardID = item.card.id
-                                                draggingSectionTitle = section.title
                                                 liveSectionItems = section.items
                                                 dragInitialItems = section.items
                                                 dragInitialIndex = section.items.firstIndex {
@@ -293,7 +290,7 @@ struct DeckDetailView: View {
                                                 }
                                                 dragInitialFrames = [:]
                                                 dragStartMidY = nil
-                                                dragLayoutDisplacementY = 0
+                                                dragPreviewDestinationIndex = dragInitialIndex
                                             }
                                             // 一打開牌組就立刻拖時，GeometryReader 可能尚未量完；
                                             // 有資料後才凍結這次手勢使用的版面，之後不再追新版面
@@ -314,6 +311,7 @@ struct DeckDetailView: View {
                                                 for: draggedCenterY,
                                                 from: initialIndex
                                             )
+                                            dragPreviewDestinationIndex = destination
 
                                             // 每次都由手勢開始時的原始順序產生結果，不在上一次
                                             // 尚未完成排版的 liveSectionItems 上繼續交換，避免雪崩
@@ -321,24 +319,19 @@ struct DeckDetailView: View {
                                             let draggedItem = reordered.remove(at: initialIndex)
                                             reordered.insert(draggedItem, at: destination)
                                             liveSectionItems = reordered
-                                            dragLayoutDisplacementY = dragLayoutDisplacement(
-                                                from: initialIndex,
-                                                to: destination
-                                            )
                                         }
                                         .onEnded { _ in
                                             if !liveSectionItems.isEmpty {
                                                 commitOrder(liveSectionItems, in: section)
                                             }
                                             draggingCardID = nil
-                                            draggingSectionTitle = nil
                                             liveSectionItems = []
                                             dragOffsetY = 0
                                             dragStartMidY = nil
                                             dragInitialFrames = [:]
                                             dragInitialItems = []
                                             dragInitialIndex = nil
-                                            dragLayoutDisplacementY = 0
+                                            dragPreviewDestinationIndex = nil
                                         }
                                 )
                             DeckEntryRowView(
@@ -357,11 +350,7 @@ struct DeckDetailView: View {
                                     value: [item.card.id: geo.frame(in: .named("cardListSpace"))])
                             }
                         )
-                        // List 重排後，列的基準位置已經移動；只補上手指位置與
-                        // 新基準位置之間的差，避免把完整 translation 重複加一次
-                        .offset(y: draggingCardID == item.card.id
-                            ? dragOffsetY - dragLayoutDisplacementY
-                            : 0)
+                        .offset(y: dragPreviewOffset(for: item.card.id))
                         .zIndex(draggingCardID == item.card.id ? 1 : 0)
                         .listRowInsets(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 16))
                     }
@@ -424,21 +413,38 @@ struct DeckDetailView: View {
         return destination
     }
 
-    /// 依初始 frame 算出 List 把列搬到目標索引後已產生的版面位移。
-    /// 使用 minY／maxY 的端點差可正確涵蓋不同列高與列間距。
-    private func dragLayoutDisplacement(from initialIndex: Int,
-                                        to destinationIndex: Int) -> CGFloat {
-        guard destinationIndex != initialIndex,
-              dragInitialItems.indices.contains(initialIndex),
-              dragInitialItems.indices.contains(destinationIndex),
-              let initialFrame = dragInitialFrames[dragInitialItems[initialIndex].card.id],
-              let destinationFrame = dragInitialFrames[dragInitialItems[destinationIndex].card.id]
+    /// 拖曳列直接跟著手指；被跨過的列只做視覺讓位，不改 ForEach 身分或順序。
+    /// 讓位距離由初始 frame 推算，可包含不同列高與 List 的列間距。
+    private func dragPreviewOffset(for cardID: String) -> CGFloat {
+        guard let draggingCardID,
+              let initialIndex = dragInitialIndex,
+              let destinationIndex = dragPreviewDestinationIndex,
+              let itemIndex = dragInitialItems.firstIndex(where: { $0.card.id == cardID })
         else { return 0 }
 
-        if destinationIndex > initialIndex {
-            return destinationFrame.maxY - initialFrame.maxY
+        if cardID == draggingCardID {
+            return dragOffsetY
         }
-        return destinationFrame.minY - initialFrame.minY
+
+        if destinationIndex > initialIndex,
+           itemIndex > initialIndex,
+           itemIndex <= destinationIndex,
+           dragInitialItems.indices.contains(initialIndex + 1),
+           let initialFrame = dragInitialFrames[dragInitialItems[initialIndex].card.id],
+           let nextFrame = dragInitialFrames[dragInitialItems[initialIndex + 1].card.id] {
+            return initialFrame.minY - nextFrame.minY
+        }
+
+        if destinationIndex < initialIndex,
+           itemIndex >= destinationIndex,
+           itemIndex < initialIndex,
+           dragInitialItems.indices.contains(initialIndex - 1),
+           let initialFrame = dragInitialFrames[dragInitialItems[initialIndex].card.id],
+           let previousFrame = dragInitialFrames[dragInitialItems[initialIndex - 1].card.id] {
+            return initialFrame.maxY - previousFrame.maxY
+        }
+
+        return 0
     }
 
     /// 把某個分區內拖曳後的新順序，寫回整副牌的排序記錄——其他分區的位置不動
