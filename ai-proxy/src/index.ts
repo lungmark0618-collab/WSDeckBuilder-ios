@@ -1,5 +1,9 @@
+interface WorkersAI {
+  run(model: string, input: unknown): Promise<unknown>;
+}
+
 export interface Env {
-  OPENAI_API_KEY: string;
+  AI: WorkersAI;
   APP_SHARED_SECRET?: string;
 }
 
@@ -19,6 +23,8 @@ const SYSTEM_PROMPT = `你是 Weiß Schwarz 卡牌遊戲的規則與卡牌效果
 - 問題牽涉到卡片效果時，優先根據下面提供的「情境卡片資料」回答。
 - 問題牽涉到裁判規則時，優先根據下面提供的「裁判級綜合規則文件」回答；規則文件沒提到的細節，才用你自己對 Weiß Schwarz 規則的一般知識補充，並明確提醒使用者這部分是推測，正式賽事仍建議詢問裁判。
 - 回答盡量精簡、有條理，需要時可以分點列出。`;
+
+const MODEL = "@cf/qwen/qwen3.8-27b";
 
 function corsHeaders(): HeadersInit {
   return {
@@ -81,29 +87,26 @@ export default {
     }
     messages.push({ role: "user", content: body.question });
 
-    const openaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!openaiRes.ok) {
-      const errText = await openaiRes.text();
-      return json({ error: `openai error: ${errText}` }, 502);
+    let result: unknown;
+    try {
+      result = await env.AI.run(MODEL, { messages, temperature: 0.3 });
+    } catch (err) {
+      return json({ error: `workers ai error: ${String(err)}` }, 502);
     }
 
-    const data = (await openaiRes.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const answer = data.choices?.[0]?.message?.content ?? "（沒有收到回覆）";
-
-    return json({ answer });
+    const answer = extractAnswer(result);
+    return json({ answer: answer ?? "（沒有收到回覆）" });
   },
 };
+
+function extractAnswer(result: unknown): string | undefined {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    const obj = result as Record<string, unknown>;
+    if (typeof obj.response === "string") return obj.response;
+    const choices = obj.choices as { message?: { content?: string } }[] | undefined;
+    const fromChoices = choices?.[0]?.message?.content;
+    if (typeof fromChoices === "string") return fromChoices;
+  }
+  return undefined;
+}
