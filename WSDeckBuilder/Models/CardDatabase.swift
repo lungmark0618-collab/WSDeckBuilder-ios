@@ -392,11 +392,14 @@ final class CardDatabase {
         }
     }
 
-    /// §4.4.1：多個篩選條件之間是 AND，同一篩選內的多選是 OR
+    /// §4.4.1：多個篩選條件之間是 AND，同一篩選內的多選是 OR。
+    /// 關鍵字比對依「像不像使用者要找的那張卡」分等第排序，不是比對到就照原始
+    /// 順序塞回去——不然打第一個字時，卡名裡有這個字的卡會被能力文字裡剛好有
+    /// 這個字的卡（通常一大票）淹沒，看起來像沒在猜使用者要找什麼。
     func search(_ query: SearchQuery) -> [Card] {
         let keywordTitles = titleCodes(
             matching: query.keyword.trimmingCharacters(in: .whitespaces))
-        return cards.filter { card in
+        let filtered = cards.filter { card in
             if let scope = query.titleCode {
                 let matches = productCodes.contains(scope)
                     ? card.productCode == scope
@@ -416,24 +419,42 @@ final class CardDatabase {
             if !query.traits.isEmpty,
                !card.traitsZH.contains(where: { query.traits.contains($0) }) { return false }
             if let source = query.sourceOnly, card.source != source { return false }
+            return true
+        }
 
-            let keyword = query.keyword.trimmingCharacters(in: .whitespaces)
-            guard !keyword.isEmpty else { return true }
+        let keyword = query.keyword.trimmingCharacters(in: .whitespaces)
+        guard !keyword.isEmpty else { return filtered }
+        let lower = keyword.lowercased()
+        let normalized = SearchQuery.normalizeCardNumber(keyword)
+
+        // 4：卡名開頭就是這個字（中英日都適用，打第一個字最想看到的結果）
+        // 3：卡名裡有這個字，但不是開頭
+        // 2：命中作品名或卡號
+        // 1：只有能力文字裡才找得到，排在最後面墊底
+        func score(_ card: Card) -> Int? {
+            let nameZH = card.nameZH.lowercased()
+            let nameJP = card.nameJP.lowercased()
+            if nameZH.hasPrefix(lower) || nameJP.hasPrefix(lower) { return 4 }
+            if nameZH.contains(lower) || nameJP.contains(lower) { return 3 }
             // 打作品名（「棕色塵埃2」）時卡名比不到，改讓整個系列命中
             if !keywordTitles.isEmpty,
-               keywordTitles.contains(titleByCardID[card.id] ?? "") { return true }
-            let lower = keyword.lowercased()
-            let normalized = SearchQuery.normalizeCardNumber(keyword)
+               keywordTitles.contains(titleByCardID[card.id] ?? "") { return 2 }
             if !normalized.isEmpty,
                card.printings.contains(where: {
                    // 先比連續字串（打完整卡號、或只打 w139075 這種），
                    // 不中再走寬鬆比對（「hol 005」這種只記得頭尾的打法）
                    SearchQuery.normalizeCardNumber($0.id).contains(normalized)
                        || SearchQuery.looselyMatchesCardNumber(query: keyword, cardID: $0.id)
-               }) { return true }
+               }) { return 2 }
             // searchBlob 是載入時就算好的小寫全文；這裡再 lowercased() 等於
             // 每按一次鍵就把整個資料庫的卡名與能力文字重新配置一遍
-            return card.searchBlob.contains(lower)
+            if card.searchBlob.contains(lower) { return 1 }
+            return nil
         }
+
+        return filtered
+            .compactMap { card in score(card).map { (card, $0) } }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
     }
 }
