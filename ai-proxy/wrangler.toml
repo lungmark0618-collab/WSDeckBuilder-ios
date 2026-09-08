@@ -7,4 +7,11 @@ compatibility_date = "2025-01-01"
 [ai]
 binding = "AI"
 
+# WSRules.md 直接打包進 Worker，當純文字模組匯入（見 src/index.ts 的
+# `import RULES_TEXT from "./WSRules.md"`），不用每次問答都靠 App 端上傳
+[[rules]]
+type = "Text"
+globs = ["**/*.md"]
+fallthrough = true
+
 # APP_SHARED_SECRET 不寫在這裡（會進 git），用 `wrangler secret put` 設定，見 README。

@@ -1,3 +1,5 @@
+import RULES_TEXT from "./WSRules.md";
+
 interface WorkersAI {
   run(model: string, input: unknown): Promise<unknown>;
 }
@@ -16,15 +18,67 @@ interface AskBody {
   question: string;
   history?: ChatTurn[];
   cardContext?: string | null;
+  // 舊版 App 可能還是會傳這個欄位，但伺服器現在自己內建規則文件並做篩選，
+  // 不再採用 App 端上傳的內容（避免每次都傳整份 54KB 造成延遲）
   rulesContext?: string | null;
 }
 
 const SYSTEM_PROMPT = `你是 Weiß Schwarz 卡牌遊戲的規則與卡牌效果問答助手，請一律用繁體中文回答，語氣簡潔、口語化。
 - 問題牽涉到卡片效果時，優先根據下面提供的「情境卡片資料」回答。
-- 問題牽涉到裁判規則時，優先根據下面提供的「裁判級綜合規則文件」回答；規則文件沒提到的細節，才用你自己對 Weiß Schwarz 規則的一般知識補充，並明確提醒使用者這部分是推測，正式賽事仍建議詢問裁判。
+- 問題牽涉到裁判規則時，優先根據下面提供的「相關規則段落」回答；這些段落是從完整規則文件中挑出來、跟問題最相關的部分，不是全文，沒提到的細節可以用你自己對 Weiß Schwarz 規則的一般知識補充，並明確提醒使用者這部分是推測，正式賽事仍建議詢問裁判。
 - 回答盡量精簡、有條理，需要時可以分點列出。`;
 
-const MODEL = "@cf/qwen/qwen3.8-27b";
+const MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
+
+// 規則文件挑段落用的參數：段落數上限、字數預算，避免每次都把整份 54KB 塞給模型
+const MAX_RULE_CHUNKS = 4;
+const MAX_RULE_CHARS = 2800;
+
+let cachedChunks: string[] | null = null;
+
+function ruleChunks(): string[] {
+  if (cachedChunks) return cachedChunks;
+  cachedChunks = RULES_TEXT.split("\n\n")
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length >= 20);
+  return cachedChunks;
+}
+
+/** 用字元 bigram 重疊度做最簡單的相關性排序，不用另外接向量資料庫 */
+function bigrams(text: string): Set<string> {
+  const set = new Set<string>();
+  for (let i = 0; i < text.length - 1; i++) {
+    set.add(text.slice(i, i + 2));
+  }
+  return set;
+}
+
+function relevantRules(question: string, cardContext?: string | null): string {
+  const queryText = `${question}\n${cardContext ?? ""}`;
+  const queryGrams = bigrams(queryText);
+  if (queryGrams.size === 0) return "";
+
+  const scored = ruleChunks()
+    .map((chunk) => {
+      const chunkGrams = bigrams(chunk);
+      let overlap = 0;
+      for (const g of queryGrams) {
+        if (chunkGrams.has(g)) overlap++;
+      }
+      return { chunk, score: overlap / Math.sqrt(chunkGrams.size + 1) };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  const picked: string[] = [];
+  let total = 0;
+  for (const entry of scored) {
+    if (picked.length >= MAX_RULE_CHUNKS || total >= MAX_RULE_CHARS) break;
+    picked.push(entry.chunk);
+    total += entry.chunk.length;
+  }
+  return picked.join("\n\n---\n\n");
+}
 
 function corsHeaders(): HeadersInit {
   return {
@@ -76,8 +130,9 @@ export default {
     if (body.cardContext) {
       system += `\n\n情境卡片資料：\n${body.cardContext}`;
     }
-    if (body.rulesContext) {
-      system += `\n\n裁判級綜合規則文件：\n${body.rulesContext}`;
+    const rules = relevantRules(body.question, body.cardContext);
+    if (rules) {
+      system += `\n\n相關規則段落：\n${rules}`;
     }
 
     const messages: { role: string; content: string }[] = [{ role: "system", content: system }];
@@ -89,7 +144,7 @@ export default {
 
     let result: unknown;
     try {
-      result = await env.AI.run(MODEL, { messages, temperature: 0.3 });
+      result = await env.AI.run(MODEL, { messages, temperature: 0.3, max_tokens: 800 });
     } catch (err) {
       return json({ error: `workers ai error: ${String(err)}` }, 502);
     }
