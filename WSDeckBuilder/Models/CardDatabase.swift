@@ -341,15 +341,22 @@ final class CardDatabase {
     /// 關鍵字指名的作品（卡片本身不含作品名，得另外比對 meta）
     func titleCodes(matching keyword: String) -> Set<String> {
         let lower = keyword.trimmingCharacters(in: .whitespaces).lowercased()
-        // 太短會配到一堆作品，反而干擾一般的卡名搜尋
-        guard lower.count >= 2 else { return [] }
+        guard !lower.isEmpty else { return [] }
+        // 只打一個字時，作品名只用「開頭是這個字」比對（不是 contains）——
+        // 這樣打第一個字就有結果，又不會因為隨便哪部作品名字中間剛好有這個字
+        // 就整批命中，看起來像亂猜；打到第二個字才放寬成整段都算
+        let onlyPrefix = lower.count == 1
         var codes: Set<String> = []
         for set in sets {
             // titleCode 可能是 "BRD/W139"，使用者只會打前綴 "BRD"
             let prefix = set.titleCode.split(separator: "/").first.map(String.init)
                 ?? set.titleCode
-            if set.titleNameZH.lowercased().contains(lower)
-                || set.titleNameJP.lowercased().contains(lower)
+            let nameZH = set.titleNameZH.lowercased()
+            let nameJP = set.titleNameJP.lowercased()
+            let nameMatches = onlyPrefix
+                ? (nameZH.hasPrefix(lower) || nameJP.hasPrefix(lower))
+                : (nameZH.contains(lower) || nameJP.contains(lower))
+            if nameMatches
                 || prefix.lowercased().hasPrefix(lower)
                 || set.titleCode.lowercased().hasPrefix(lower) {
                 codes.insert(set.titleCode)
@@ -358,11 +365,14 @@ final class CardDatabase {
         return codes
     }
 
-    /// 疑似在找某個作品時給的選項；打錯字也照原樣保留使用者的輸入
+    /// 疑似在找某個作品時給的選項；打錯字也照原樣保留使用者的輸入。
+    /// 只打一個字時只用精確前綴比對（見 titleCodes(matching:)），不跑容錯
+    /// 比對——編輯距離在一個字上沒有意義，隨便什麼字都會判成「打錯字」
     func suggestions(for keyword: String) -> [SearchSuggestion] {
         let trimmed = keyword.trimmingCharacters(in: .whitespaces)
-        guard trimmed.count >= 2 else { return [] }
+        guard !trimmed.isEmpty else { return [] }
         let exact = titleCodes(matching: trimmed)
+        let allowTypoMatch = trimmed.count >= 2
 
         var result: [SearchSuggestion] = []
         for set in sets {
@@ -371,9 +381,9 @@ final class CardDatabase {
             let reason: SearchSuggestion.Reason?
             if exact.contains(set.titleCode) {
                 reason = .exact
-            } else if FuzzyMatch.isTypo(trimmed, of: prefix) {
+            } else if allowTypoMatch, FuzzyMatch.isTypo(trimmed, of: prefix) {
                 reason = .typo(matched: prefix)
-            } else if FuzzyMatch.isTypo(trimmed, of: set.titleNameZH) {
+            } else if allowTypoMatch, FuzzyMatch.isTypo(trimmed, of: set.titleNameZH) {
                 reason = .typo(matched: set.titleNameZH)
             } else {
                 reason = nil
