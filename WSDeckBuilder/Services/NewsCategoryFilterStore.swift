@@ -24,6 +24,18 @@ final class NewsCategoryFilterStore {
         UserDefaults.standard.set(Array(hidden), forKey: Self.key)
     }
 
+    /// 全選＝清空隱藏清單，全部分類都顯示
+    func showAll() {
+        hidden = []
+        UserDefaults.standard.set([], forKey: Self.key)
+    }
+
+    /// 全部清除＝把目前看得到的分類全部設成隱藏
+    func hideAll(_ categories: [String]) {
+        hidden = Set(categories)
+        UserDefaults.standard.set(Array(hidden), forKey: Self.key)
+    }
+
     /// 一則公告只要還有任一分類沒被隱藏就顯示——公告常常同時掛好幾個分類，
     /// 全部被使用者關掉了才真的濾掉
     func isVisible(_ item: WSNewsItem) -> Bool {

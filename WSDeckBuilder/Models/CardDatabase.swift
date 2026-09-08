@@ -312,6 +312,15 @@ final class CardDatabase {
         return cards.filter { titleByCardID[$0.id] == scope }
     }
 
+    /// 畫面標題／篩選摘要要顯示的名稱：一般情況直接查 browsableSets 就有；
+    /// 「不分彈瀏覽整個作品」用的 id 是裸 titleCode，不在 browsableSets 裡
+    /// （每個 BrowsableSet 拆彈後 id 都是 productCode），要另外查 sets 補上
+    func scopeDisplayName(_ code: String) -> String {
+        if let set = browsableSets.first(where: { $0.id == code }) { return set.displayNameZH }
+        if let meta = sets.first(where: { $0.titleCode == code }) { return "\(meta.titleNameZH)（不分彈）" }
+        return code
+    }
+
     /// 只列這個瀏覽單位出現過的特徵，篩選頁鎖定作品/商品時用——全部特徵一次
     /// 列出來常常有上百個跨作品的標籤，鎖定範圍後大多數根本不會出現在結果
     /// 裡，縮小範圍才看得出「這裡有哪些特徵可以篩」

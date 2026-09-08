@@ -13,9 +13,23 @@ struct TitleGalleryView: View {
 
     @Environment(FavoriteTitlesStore.self) private var favorites
 
-    /// 卡多的作品排前面——會反覆翻的就是那幾部，照代號排等於隨機順序
+    /// 卡多的作品排前面——會反覆翻的就是那幾部，照代號排等於隨機順序。
+    /// 拆很多彈的作品（如 OVERLORD）另外併一張「不分彈」的卡片：只認得卡面、
+    /// 不知道自己要找哪一彈的人，可以一次瀏覽整個系列，不用一彈一彈點進去找
     private var ordered: [BrowsableSet] {
-        sets.sorted { $0.cardCount > $1.cardCount }
+        withCombinedEntries(sets).sorted { $0.cardCount > $1.cardCount }
+    }
+
+    private func withCombinedEntries(_ items: [BrowsableSet]) -> [BrowsableSet] {
+        let grouped = Dictionary(grouping: items, by: \.titleCode)
+        let combined: [BrowsableSet] = grouped.values.compactMap { group in
+            guard group.count > 1, let sample = group.first else { return nil }
+            return BrowsableSet(id: sample.titleCode, titleCode: sample.titleCode,
+                                titleNameZH: sample.titleNameZH, titleNameJP: sample.titleNameJP,
+                                cardCount: group.reduce(0) { $0 + $1.cardCount },
+                                productCode: nil, waveLabel: "不分彈")
+        }
+        return items + combined
     }
 
     /// 收藏的作品獨立成一區釘在最上面；篩選中（在搜作品名）就不特別分區，

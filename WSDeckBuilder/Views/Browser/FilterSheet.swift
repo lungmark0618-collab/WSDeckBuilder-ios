@@ -78,19 +78,19 @@ struct FilterSheet: View {
                         }
                     }
                 }
-                card("等級") {
+                multiSelectCard("等級", items: [0, 1, 2, 3], set: $query.levels) {
                     toggleFlow(items: [0, 1, 2, 3], set: $query.levels) { "Lv\($0)" }
                 }
-                card("顏色") {
+                multiSelectCard("顏色", items: CardColor.allCases, set: $query.colors) {
                     toggleFlow(items: CardColor.allCases, set: $query.colors) { $0.label }
                 }
-                card("種類") {
+                multiSelectCard("種類", items: CardType.allCases, set: $query.types) {
                     toggleFlow(items: CardType.allCases, set: $query.types) { $0.label }
                 }
                 // 沒鎖定作品時特徵動輒上百個，乾脆整區不顯示——選了作品才彈出來，
                 // 不用先看到一堆跨作品的標籤再等著被縮小範圍
                 if query.titleCode != nil {
-                    card(traitsCardTitle) {
+                    multiSelectCard(traitsCardTitle, items: availableTraits, set: $query.traits) {
                         toggleFlow(items: availableTraits, set: $query.traits) { "《\($0)》" }
                     }
                 }
@@ -161,7 +161,7 @@ struct FilterSheet: View {
         .buttonStyle(.plain)
 
         if showMoreFilters {
-            card("判定標誌") { triggerFlow }
+            multiSelectCard("判定標誌", items: TriggerIcon.allCases, set: $query.triggers) { triggerFlow }
             card("收錄來源") {
                 Picker("來源", selection: $query.sourceOnly) {
                     Text("全部").tag(CardSource?.none)
@@ -180,6 +180,33 @@ struct FilterSheet: View {
             Text(title)
                 .font(.subheadline.bold())
                 .foregroundStyle(AppSurface.secondaryText)
+            content()
+        }
+        .padding(Spacing.s16)
+        .background(AppSurface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
+                .strokeBorder(AppSurface.hairline, lineWidth: 1)
+        }
+    }
+
+    /// 多選 chip 群組的卡片：標題旁邊多「全選／清除」，選項一多（尤其特徵）
+    /// 一個一個點太累，加這個才不用每個 chip 都戳一次
+    private func multiSelectCard<T: Hashable>(_ title: String, items: [T],
+                                               set: Binding<Set<T>>,
+                                               @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s12) {
+            HStack {
+                Text(title)
+                    .font(.subheadline.bold())
+                    .foregroundStyle(AppSurface.secondaryText)
+                Spacer()
+                Button("全選") { set.wrappedValue = Set(items) }
+                    .disabled(items.isEmpty || set.wrappedValue.count == items.count)
+                Button("清除") { set.wrappedValue = [] }
+                    .disabled(set.wrappedValue.isEmpty)
+            }
+            .font(.caption)
             content()
         }
         .padding(Spacing.s16)

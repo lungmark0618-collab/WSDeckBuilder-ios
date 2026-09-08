@@ -386,6 +386,14 @@ private struct NewsCategoryFilterSheet: View {
             .navigationTitle("篩選首頁公告")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("全選") { store.showAll() }
+                        .disabled(store.hidden.isEmpty)
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("全部清除") { store.hideAll(NewsCategory.all) }
+                        .disabled(store.hidden.count == NewsCategory.all.count)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
                 }

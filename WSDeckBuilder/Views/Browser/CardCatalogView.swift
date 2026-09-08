@@ -226,7 +226,7 @@ struct CardCatalogView: View {
         case .root:
             "圖鑑"
         case .title(let code):
-            database.browsableSets.first { $0.id == code }?.displayNameZH ?? code
+            database.scopeDisplayName(code)
         case .allCards:
             "全部卡片"
         }
@@ -277,7 +277,7 @@ struct CardCatalogView: View {
     private var filterSummary: String {
         var parts: [String] = []
         if let code = query.titleCode, code != pinnedTitle {
-            parts.append(database.browsableSets.first { $0.id == code }?.displayNameZH ?? code)
+            parts.append(database.scopeDisplayName(code))
         }
         if !query.levels.isEmpty {
             parts.append("Lv" + query.levels.sorted().map(String.init).joined(separator: "/"))
