@@ -53,9 +53,14 @@ struct CardDetailSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
+                        // 先把要問的卡片準備好，再關掉這個卡片詳情頁；根層的
+                        // AIChatSheet 跟這裡共用同一個 isPresented，兩個 sheet
+                        // 不能同時疊在一起，所以退場動畫結束後才會自動接著彈出
+                        // AI 視窗，不用使用者自己再手動關一次
                         aiChat.open(withCard: currentCard)
+                        dismiss()
                     } label: {
-                        Image(systemName: "sparkles")
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
                     }
                     .accessibilityLabel("問 AI 這張卡")
                 }
