@@ -190,21 +190,22 @@ struct FilterSheet: View {
         }
     }
 
-    /// 多選 chip 群組的卡片：標題旁邊多「全選／清除」，選項一多（尤其特徵）
-    /// 一個一個點太累，加這個才不用每個 chip 都戳一次
+    /// 多選 chip 群組的卡片：標題旁邊多一顆「全選／全部清除」——同一顆按鈕，
+    /// 選滿了就變成「全部清除」，不是分開兩顆各自變灰
     private func multiSelectCard<T: Hashable>(_ title: String, items: [T],
                                                set: Binding<Set<T>>,
                                                @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.s12) {
+        let allSelected = !items.isEmpty && set.wrappedValue.count == items.count
+        return VStack(alignment: .leading, spacing: Spacing.s12) {
             HStack {
                 Text(title)
                     .font(.subheadline.bold())
                     .foregroundStyle(AppSurface.secondaryText)
                 Spacer()
-                Button("全選") { set.wrappedValue = Set(items) }
-                    .disabled(items.isEmpty || set.wrappedValue.count == items.count)
-                Button("清除") { set.wrappedValue = [] }
-                    .disabled(set.wrappedValue.isEmpty)
+                Button(allSelected ? "全部清除" : "全選") {
+                    set.wrappedValue = allSelected ? [] : Set(items)
+                }
+                .disabled(items.isEmpty)
             }
             .font(.caption)
             content()

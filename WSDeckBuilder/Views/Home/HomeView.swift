@@ -387,12 +387,14 @@ private struct NewsCategoryFilterSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("全選") { store.showAll() }
-                        .disabled(store.hidden.isEmpty)
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("全部清除") { store.hideAll(NewsCategory.all) }
-                        .disabled(store.hidden.count == NewsCategory.all.count)
+                    // 同一顆按鈕：全部隱藏時顯示「全選」，全部顯示時變成「全部清除」
+                    Button(store.hidden.count == NewsCategory.all.count ? "全選" : "全部清除") {
+                        if store.hidden.count == NewsCategory.all.count {
+                            store.showAll()
+                        } else {
+                            store.hideAll(NewsCategory.all)
+                        }
+                    }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
