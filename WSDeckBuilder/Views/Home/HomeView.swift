@@ -4,6 +4,7 @@ import SwiftUI
 /// App 開啟後第一眼看到的畫面：官網公告（新商品、卡表更新、大會、規則異動），
 /// 取代原本開場就是圖鑑的安排——這是使用者主動要求的首頁。
 struct HomeView: View {
+    @Environment(\.appSurface) private var surface
     @Environment(WSNewsService.self) private var news
     @Environment(CardDatabase.self) private var database
     @Environment(PinnedDecksStore.self) private var pinnedDecks
@@ -16,63 +17,78 @@ struct HomeView: View {
     /// 這正是「釘選到首頁」要省下來的那一步
     @State private var selectedDeck: Deck?
     @State private var showingCategoryFilter = false
+    /// 搜尋「最新動態」用的關鍵字——比對標題（中日文）跟商品規格重點
+    @State private var searchText = ""
 
     var body: some View {
         NavigationStack {
-            Group {
-                if news.items.isEmpty, news.isLoading {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if news.items.isEmpty {
-                    ContentUnavailableView("還沒有公告", systemImage: "newspaper",
-                                           description: Text("下拉重新整理試試看。"))
-                } else {
-                    ScrollView {
-                        VStack(spacing: Spacing.s16) {
-                            if !pinnedDecksOrdered.isEmpty {
-                                PinnedDecksRow(decks: pinnedDecksOrdered, database: database) {
-                                    selectedDeck = $0
-                                }
-                                .padding(.top, Spacing.s8)
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.s32) {
+                    // 搜尋中就只顯示比對結果，把常用牌組收起來——
+                    // 這一區跟關鍵字無關，留著只會讓人分心找不到搜尋結果在哪
+                    if !isSearching {
+                        if !pinnedDecksOrdered.isEmpty {
+                            PinnedDecksRow(decks: pinnedDecksOrdered, database: database) {
+                                selectedDeck = $0
                             }
-                            if !heroItems.isEmpty {
-                                HeroCarousel(items: heroItems, categoryColor: NewsCategory.color(_:)) {
-                                    selectedItem = $0
+                        }
+                        if !heroItems.isEmpty {
+                            HeroCarousel(items: heroItems) { selectedItem = $0 }
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: Spacing.s12) {
+                        sectionHeading(isSearching ? "搜尋結果" : "最新動態", subtitle: nil)
+                            .onboardingAnchor(.homeIntro)
+                        if news.isLoading, news.items.isEmpty {
+                            ProgressView("正在取得最新消息…")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, Spacing.s32)
+                        } else if filteredItems.isEmpty {
+                            ContentUnavailableView {
+                                Label(isSearching ? "沒有符合的消息"
+                                      : (news.items.isEmpty ? "暫時沒有消息" : "沒有符合的公告"),
+                                      systemImage: isSearching ? "magnifyingglass" : "newspaper")
+                            } description: {
+                                Text(isSearching ? "換個關鍵字試試，或確認分類篩選有沒有把它藏起來。"
+                                     : (news.errorMessage ?? (news.items.isEmpty
+                                        ? "下拉重新整理，稍後再來看看。"
+                                        : "目前的分類已隱藏所有公告，可以調整篩選。")))
+                            } actions: {
+                                if isSearching {
+                                    EmptyView()
+                                } else if !news.items.isEmpty {
+                                    Button("調整分類") { showingCategoryFilter = true }
+                                        .buttonStyle(.tonal)
+                                } else {
+                                    Button("重新載入") { Task { await news.refresh() } }
+                                        .buttonStyle(.tonal)
                                 }
-                                .padding(.top, pinnedDecksOrdered.isEmpty ? Spacing.s8 : 0)
-                                .onboardingAnchor(.homeIntro)
                             }
-                            LazyVStack(spacing: Spacing.s12) {
+                        } else {
+                            LazyVStack(spacing: 0) {
                                 if let errorMessage = news.errorMessage {
-                                    Text(errorMessage)
+                                    Label(errorMessage, systemImage: "wifi.exclamationmark")
                                         .font(.footnote)
                                         .foregroundStyle(.orange)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(.horizontal, Spacing.s4)
                                 }
                                 ForEach(filteredItems) { item in
-                                    Button {
-                                        selectedItem = item
-                                    } label: {
-                                        row(item)
-                                    }
-                                    .buttonStyle(.plain)
+                                    Button { selectedItem = item } label: { row(item) }
+                                        .buttonStyle(.plain)
                                 }
                             }
                             .padding(.horizontal, Spacing.s16)
                         }
-                        .padding(.bottom, 140)
-                    }
-                    .scrollContentBackground(.hidden)
-                    .background {
-                        ZStack {
-                            AppSurface.background
-                            meshBackground
-                        }
-                        .ignoresSafeArea()
                     }
                 }
+                .padding(.top, Spacing.s16)
+                .padding(.bottom, 140)
             }
+            .background(surface.background.ignoresSafeArea())
             .navigationTitle("首頁")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText,
+                        placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: "搜尋最新動態")
             .refreshable { await news.refresh() }
             .task {
                 if news.items.isEmpty { await news.refresh() }
@@ -105,10 +121,21 @@ struct HomeView: View {
         }
     }
 
-    /// 套用使用者的分類篩選——輪播跟列表共用同一份結果，
-    /// 免得使用者把某分類關掉了，卻還在輪播裡看到
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// 套用使用者的分類篩選，再疊上關鍵字搜尋，
+    /// 比對標題（中日文）跟商品規格重點，不比對分類標籤本身
     private var filteredItems: [WSNewsItem] {
-        news.items.filter { categoryFilter.isVisible($0) }
+        let categoryFiltered = news.items.filter { categoryFilter.isVisible($0) }
+        guard isSearching else { return categoryFiltered }
+        let keyword = searchText.trimmingCharacters(in: .whitespaces)
+        return categoryFiltered.filter { item in
+            item.titleZH?.localizedCaseInsensitiveContains(keyword) == true
+                || item.titleJP.localizedCaseInsensitiveContains(keyword)
+                || item.highlightsZH.contains { $0.localizedCaseInsensitiveContains(keyword) }
+        }
     }
 
     /// 依釘選順序排出實際存在的牌組——牌組被刪掉但清理沒跑到的殘影
@@ -119,8 +146,6 @@ struct HomeView: View {
         return pinnedDecks.uuids.compactMap { byUUID[$0] }
     }
 
-    /// 輪播只挑有配圖、跟商品/卡表有關的公告——參考官網首頁「最新商品」跑馬燈的做法，
-    /// 規則更新、賽事這類沒有視覺重點的公告不適合放大圖展示
     private var heroItems: [WSNewsItem] {
         filteredItems
             .filter { $0.imageURL != nil && $0.categories.contains(where: { $0 == "商品情報" || $0 == "カードリスト" }) }
@@ -128,80 +153,51 @@ struct HomeView: View {
             .map { $0 }
     }
 
-    /// 首頁背景的全息光暈——呼應集換式卡牌本身的「卡背」質感，
-    /// 淡淡三團色暈疊在近黑底色上，不搶內容但讓畫面不死板
-    private var meshBackground: some View {
-        ZStack {
-            RadialGradient(colors: [.purple.opacity(0.20), .clear],
-                           center: .init(x: 0.88, y: -0.06), startRadius: 0, endRadius: 320)
-            RadialGradient(colors: [.orange.opacity(0.10), .clear],
-                           center: .init(x: -0.1, y: 0.18), startRadius: 0, endRadius: 300)
-            RadialGradient(colors: [Color(red: 0.85, green: 0.35, blue: 0.60).opacity(0.14), .clear],
-                           center: .init(x: 0.5, y: 1.2), startRadius: 0, endRadius: 420)
+    private func sectionHeading(_ title: String, subtitle: String?) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.s8) {
+            if let subtitle {
+                Text(subtitle).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+            }
+            Text(title).font(subtitle == nil ? .title2.bold() : .largeTitle.bold())
+                .tracking(-0.6)
         }
+        .padding(.horizontal, Spacing.s24)
     }
 
     private func row(_ item: WSNewsItem) -> some View {
-        let color = item.categories.first.map(NewsCategory.color) ?? .secondary
-        return VStack(alignment: .leading, spacing: Spacing.s8) {
-            HStack(spacing: Spacing.s8) {
-                ForEach(item.categories, id: \.self) { category in
-                    HStack(spacing: Spacing.s4) {
-                        // 小菱形「寶石」取代原本的色塊膠囊，呼應卡牌稀有度標記
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(NewsCategory.color(category))
-                            .frame(width: 6, height: 6)
-                            .rotationEffect(.degrees(45))
-                            .shadow(color: NewsCategory.color(category).opacity(0.7), radius: 4)
-                        Text(NewsCategory.labelZH(category))
-                            .font(.caption2.weight(.heavy))
-                            .tracking(0.4)
-                    }
-                    .foregroundStyle(NewsCategory.tint(category))
-                }
-                Spacer(minLength: Spacing.s8)
+        HStack(spacing: Spacing.s16) {
+            VStack(alignment: .leading, spacing: Spacing.s8) {
+                Text(item.categories.map(NewsCategory.labelZH).joined(separator: " · "))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text(item.displayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.primary.opacity(0.94))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(item.date.replacingOccurrences(of: "-", with: "."))
-                    .font(.caption2.weight(.bold).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.42))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            Text(item.displayTitle)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(Color(white: 0.96))
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
         }
-        .padding(Spacing.s16)
-        .background {
-            ZStack {
-                LinearGradient(colors: [Color(red: 0.078, green: 0.082, blue: 0.122),
-                                        Color(red: 0.047, green: 0.051, blue: 0.078)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                // 卡角的全息燙金色塊——這就是「B·全息卡背」跟其他方向的核心差異
-                GeometryReader { proxy in
-                    color.opacity(0.16)
-                        .frame(width: 96, height: 96)
-                        .rotationEffect(.degrees(45))
-                        .position(x: proxy.size.width, y: 0)
-                }
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: Radius.mid + 2, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: Radius.mid + 2, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+        .padding(.horizontal, Spacing.s8)
+        .padding(.vertical, Spacing.s16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(surface.hairline).frame(height: 0.5)
+                .padding(.horizontal, Spacing.s8)
         }
     }
 
 }
 
 /// 常用牌組快速列——使用者在「牌組」分頁左滑釘選，最想順手開的幾副牌組
-/// 就不用再多切一次分頁、多找一次。放在輪播上面，因為這是「我自己的東西」，
+/// 就不用再多切一次分頁、多找一次。放在最新動態上面，因為這是「我自己的東西」，
 /// 每次開 App 大概都想先看一眼，比官網公告更優先。
 private struct PinnedDecksRow: View {
     let decks: [Deck]
@@ -212,7 +208,7 @@ private struct PinnedDecksRow: View {
         VStack(alignment: .leading, spacing: Spacing.s8) {
             Text("常用牌組")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(Color.primary.opacity(0.7))
                 .padding(.horizontal, Spacing.s16)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Spacing.s12) {
@@ -230,6 +226,7 @@ private struct PinnedDecksRow: View {
 }
 
 private struct PinnedDeckCard: View {
+    @Environment(\.appSurface) private var surface
     let deck: Deck
     let database: CardDatabase
 
@@ -242,118 +239,113 @@ private struct PinnedDeckCard: View {
                         .frame(width: 44)
                 } else {
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(.white.opacity(0.08))
+                        .fill(Color.primary.opacity(0.08))
                         .frame(width: 44, height: 61)
                         .overlay {
                             Image(systemName: "rectangle.stack")
-                                .foregroundStyle(.white.opacity(0.4))
+                                .foregroundStyle(Color.primary.opacity(0.4))
                         }
                 }
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(deck.name)
                     .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.primary)
                     .lineLimit(1)
                 Text("\(deck.totalCount) 張")
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(Color.primary.opacity(0.55))
             }
         }
         .padding(Spacing.s12)
         .frame(width: 168, alignment: .leading)
-        .background(AppSurface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+        .background(surface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
-                .strokeBorder(.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
         }
     }
 }
 
-/// 首頁最上方的大圖輪播——參考官網首頁「最新商品」跑馬燈：整張商品視覺圖
-/// 滿版顯示、左右滑動切換、底部疊標題跟日期，比純文字列表更能一眼抓住
-/// 「現在有什麼新東西」
+/// 保留商品大圖輪播，輪播上方不再放額外宣傳標題。
 private struct HeroCarousel: View {
+    @Environment(\.appSurface) private var surface
     let items: [WSNewsItem]
-    let categoryColor: (String) -> Color
     let onSelect: (WSNewsItem) -> Void
     @State private var index = 0
+    @ScaledMetric(relativeTo: .title3) private var captionHeight = 144
 
     var body: some View {
         VStack(spacing: Spacing.s12) {
             TabView(selection: $index) {
                 ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
-                    HeroSlide(item: item, accent: item.categories.first.map(categoryColor) ?? .white) {
-                        onSelect(item)
-                    }
-                    .tag(i)
+                    HeroSlide(item: item) { onSelect(item) }.tag(i)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 224)
-
+            .frame(height: 220 + captionHeight)
             if items.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(items.indices, id: \.self) { i in
                         Capsule()
-                            .fill(i == index ? .white : .white.opacity(0.28))
+                            .fill(i == index ? Color.primary : Color.primary.opacity(0.28))
                             .frame(width: i == index ? 16 : 6, height: 6)
                     }
                 }
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: index)
             }
         }
+        .onChange(of: items.map(\.id)) { _, _ in index = 0 }
     }
 }
 
 private struct HeroSlide: View {
+    @Environment(\.appSurface) private var surface
     let item: WSNewsItem
-    let accent: Color
     let onTap: () -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            ZStack(alignment: .bottomLeading) {
-                PolicyGatedRemoteImage(urlString: item.imageURL)
-                LinearGradient(colors: [.clear, .clear, .black.opacity(0.55), .black.opacity(0.92)],
-                               startPoint: .top, endPoint: .bottom)
-                VStack(alignment: .leading, spacing: Spacing.s8) {
-                    HStack(spacing: Spacing.s4) {
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(accent)
-                            .frame(width: 6, height: 6)
-                            .rotationEffect(.degrees(45))
-                            .shadow(color: accent.opacity(0.8), radius: 4)
-                        Text(item.categories.first.map(NewsCategory.labelZH) ?? "")
-                            .font(.caption2.weight(.heavy))
-                            .tracking(0.4)
-                        Spacer()
-                        Text(item.date.replacingOccurrences(of: "-", with: "."))
-                            .font(.caption2.weight(.bold).monospacedDigit())
+        VStack(spacing: 0) {
+            PolicyGatedRemoteImage(urlString: item.imageURL, contentMode: .fit)
+                .frame(height: 220)
+                .onTapGesture(perform: onTap)
+                .accessibilityLabel("商品圖片")
+            Button(action: onTap) {
+                HStack(spacing: Spacing.s16) {
+                    VStack(alignment: .leading, spacing: Spacing.s8) {
+                        Text(item.categories.first.map(NewsCategory.labelZH) ?? "商品資訊")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Text(item.displayTitle)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(Color.primary)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
                     }
-                    .foregroundStyle(.white.opacity(0.85))
-                    Text(item.displayTitle)
-                        .font(.title3.weight(.heavy))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .shadow(color: .black.opacity(0.4), radius: 4, y: 2)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.primary.opacity(0.8))
+                        .frame(width: 36, height: 36)
+                        .background(Color.primary.opacity(0.06), in: Circle())
                 }
-                .padding(Spacing.s16)
+                .padding(Spacing.s24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: Radius.large, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: Radius.large, style: .continuous)
-                    .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-            }
-            .padding(.horizontal, Spacing.s16)
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .background(surface.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(surface.hairline, lineWidth: 0.5)
+        }
+        .padding(.horizontal, Spacing.s24)
     }
 }
 
-/// 首頁公告分類篩選——關掉不想看的分類，輪播跟列表都會跟著濾掉
+/// 首頁公告分類篩選——關掉不想看的分類，消息列表會跟著篩選
 private struct NewsCategoryFilterSheet: View {
     let store: NewsCategoryFilterStore
     @Environment(\.dismiss) private var dismiss
