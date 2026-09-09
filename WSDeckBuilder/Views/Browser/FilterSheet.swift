@@ -6,6 +6,7 @@ import SwiftUI
 /// 選項一多（尤其特徵）大半都藏在畫面外側滑才看得到，改成 FlowLayout
 /// 自動換行、疊層佔滿整個螢幕，一次能攤開的空間也更大。
 struct FilterSheet: View {
+    @Environment(\.appSurface) private var surface
     @Binding var query: SearchQuery
     /// 畫面已經鎖定某部作品時藏起這一區——在這裡換作品，
     /// 標題和內容就會對不上
@@ -103,7 +104,7 @@ struct FilterSheet: View {
                         .labelsHidden()
                         Text("依「我的收藏」記錄的擁有張數篩選，可用來找還沒收到的卡。")
                             .font(.caption)
-                            .foregroundStyle(AppSurface.secondaryText)
+                            .foregroundStyle(surface.secondaryText)
                     }
                 }
 
@@ -152,10 +153,10 @@ struct FilterSheet: View {
             }
             .foregroundStyle(.primary)
             .padding(Spacing.s16)
-            .background(AppSurface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+            .background(surface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
-                    .strokeBorder(AppSurface.hairline, lineWidth: 1)
+                    .strokeBorder(surface.hairline, lineWidth: 1)
             }
         }
         .buttonStyle(.plain)
@@ -179,14 +180,14 @@ struct FilterSheet: View {
         VStack(alignment: .leading, spacing: Spacing.s12) {
             Text(title)
                 .font(.subheadline.bold())
-                .foregroundStyle(AppSurface.secondaryText)
+                .foregroundStyle(surface.secondaryText)
             content()
         }
         .padding(Spacing.s16)
-        .background(AppSurface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+        .background(surface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
-                .strokeBorder(AppSurface.hairline, lineWidth: 1)
+                .strokeBorder(surface.hairline, lineWidth: 1)
         }
     }
 
@@ -200,7 +201,7 @@ struct FilterSheet: View {
             HStack {
                 Text(title)
                     .font(.subheadline.bold())
-                    .foregroundStyle(AppSurface.secondaryText)
+                    .foregroundStyle(surface.secondaryText)
                 Spacer()
                 Button(allSelected ? "全部清除" : "全選") {
                     set.wrappedValue = allSelected ? [] : Set(items)
@@ -211,10 +212,10 @@ struct FilterSheet: View {
             content()
         }
         .padding(Spacing.s16)
-        .background(AppSurface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+        .background(surface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
-                .strokeBorder(AppSurface.hairline, lineWidth: 1)
+                .strokeBorder(surface.hairline, lineWidth: 1)
         }
     }
 
@@ -228,7 +229,7 @@ struct FilterSheet: View {
                 .font(.callout)
                 .padding(.horizontal, Spacing.s12)
                 .padding(.vertical, 6)
-                .background(isOn ? Color.accentColor : AppSurface.panelElevated, in: Capsule())
+                .background(isOn ? Color.accentColor : surface.panelElevated, in: Capsule())
                 .foregroundStyle(isOn ? .white : .primary)
         }
         .buttonStyle(.plain)
@@ -249,7 +250,7 @@ struct FilterSheet: View {
                     TriggerIconView(trigger: trigger, size: 20)
                         .padding(.horizontal, Spacing.s12)
                         .padding(.vertical, 6)
-                        .background(isOn ? Color.accentColor : AppSurface.panelElevated, in: Capsule())
+                        .background(isOn ? Color.accentColor : surface.panelElevated, in: Capsule())
                         .foregroundStyle(isOn ? .white : .primary)
                 }
                 .buttonStyle(.plain)
@@ -275,7 +276,7 @@ struct FilterSheet: View {
                         .font(.callout)
                         .padding(.horizontal, Spacing.s12)
                         .padding(.vertical, 6)
-                        .background(isOn ? Color.accentColor : AppSurface.panelElevated, in: Capsule())
+                        .background(isOn ? Color.accentColor : surface.panelElevated, in: Capsule())
                         .foregroundStyle(isOn ? .white : .primary)
                 }
                 .buttonStyle(.plain)

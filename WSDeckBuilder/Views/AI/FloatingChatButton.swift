@@ -4,6 +4,7 @@ import SwiftUI
 /// 放著不動一段時間會收到最近的那個邊緣、只留一點點探出來；點探出來的部分
 /// 或再拖它都會展開回來。整個按鈕可以在「設定」關掉。
 struct FloatingChatButton: View {
+    @Environment(\.appSurface) private var surface
     @Environment(AIChatCoordinator.self) private var coordinator
     @Environment(AppearanceSettings.self) private var appearance
     @AppStorage("aiChatButtonEnabled") private var isEnabled = true
@@ -78,9 +79,10 @@ struct FloatingChatButton: View {
     private var button: some View {
         Image(systemName: "bubble.left.and.bubble.right.fill")
             .font(.system(size: 20, weight: .semibold))
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.primary)
             .frame(width: size, height: size)
-            .background(appearance.accentColor, in: Circle())
+            .background(surface.panelElevated, in: Circle())
+            .overlay { Circle().strokeBorder(appearance.accentColor.opacity(0.25), lineWidth: 1) }
             .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
             .opacity(collapsedToLeft != nil ? 0.6 : 1)
             .accessibilityLabel("問 AI")

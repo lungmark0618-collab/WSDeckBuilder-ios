@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 設定分頁：網路政策、快取管理、預先下載（§4.4.6 / §4.4.7）
 struct SettingsView: View {
+    @Environment(\.appSurface) private var surface
     @Environment(CardDatabase.self) private var database
     @Environment(DataUpdater.self) private var updater
     @Environment(AnnouncementCenter.self) private var announcements
@@ -42,6 +43,8 @@ struct SettingsView: View {
                 cacheSection
                 helpSection
             }
+            .scrollContentBackground(.hidden)
+            .background(surface.background)
             .clearsGlassTabBar()
             .navigationTitle("設定")
             .task { await refreshCacheInfo() }

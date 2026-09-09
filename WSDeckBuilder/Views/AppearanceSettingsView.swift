@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 外觀個人化設定：字體、顏色、背景、強調色，附即時預覽
 struct AppearanceSettingsView: View {
+    @Environment(\.appSurface) private var surface
     @Environment(AppearanceSettings.self) private var appearance
     @Environment(CardDatabase.self) private var database
     @Environment(OnboardingCoordinator.self) private var onboarding
@@ -9,7 +10,20 @@ struct AppearanceSettingsView: View {
     var body: some View {
         @Bindable var settings = appearance
         Form {
-            Section("預覽") { previewCard }
+            Section("背景") {
+                Picker("背景風格", selection: $settings.background) {
+                    ForEach(BackgroundStyle.allCases) { style in
+                        Text(style.label).tag(style)
+                    }
+                }
+                if settings.background == .custom {
+                    ColorPicker("自訂背景顏色", selection: $settings.customBackgroundColor,
+                                supportsOpacity: false)
+                }
+                Text("立即套用所有分頁，文字與面板會隨背景明暗調整。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("預覽") { previewCard.listRowBackground(surface.panel) }
 
             Section {
                 Toggle("同時顯示日文原文", isOn: $settings.showJapanese)
@@ -64,6 +78,9 @@ struct AppearanceSettingsView: View {
                 Button("回復預設值", role: .destructive) { resetAll() }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(surface.background)
+        .clearsGlassTabBar()
         .navigationTitle("外觀")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { onboarding.notify(.appearance) }
@@ -156,6 +173,8 @@ struct AppearanceSettingsView: View {
 
     private func resetAll() {
         appearance.showJapanese = false
+        appearance.background = .pureBlack
+        appearance.customBackgroundHex = "E8E4DC"
         appearance.textSize = .standard
         appearance.textWeight = .regular
         appearance.textTone = .standard

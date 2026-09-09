@@ -37,7 +37,7 @@ enum OnboardingStep: Int, CaseIterable {
     var body: String {
         switch self {
         case .welcome: "歡迎使用本程式，接下來我會教你如何使用這些功能。"
-        case .homeIntro: "上面可以左右滑動看最新商品，下面是官方公告，點進去可以看我們整理過的重點再決定要不要去官網看完整內容。"
+        case .homeIntro: "首頁的最新動態整理了官方公告，點進去可以查看重點，再決定要不要閱讀官網完整內容。"
         case .search: "在上面的搜尋列輸入卡號、卡名或能力文字，試著打「hololive」看看。"
         case .filter: "點篩選，可以用等級、顏色、種類縮小範圍。"
         case .notifications: "開發者的公告和卡表更新，都會在這裡提醒你。"

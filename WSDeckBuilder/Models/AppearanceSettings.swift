@@ -33,6 +33,15 @@ final class AppearanceSettings {
         didSet { store(accentMode.rawValue, "ap.accentMode") }
     }
 
+    var customBackgroundHex: String {
+        didSet { store(customBackgroundHex, "ap.customBackgroundHex") }
+    }
+
+    var customBackgroundColor: Color {
+        get { Color(UIColor(rgbHex: customBackgroundHex)) }
+        set { customBackgroundHex = UIColor(newValue).rgbHex }
+    }
+
     /// accentMode == .fixed 時使用
     var fixedAccent: AccentPreset {
         didSet { store(fixedAccent.rawValue, "ap.fixedAccent") }
@@ -55,6 +64,7 @@ final class AppearanceSettings {
         textSize = TextSize(rawValue: defaults.string(forKey: "ap.textSize") ?? "") ?? .standard
         textWeight = TextWeight(rawValue: defaults.string(forKey: "ap.textWeight") ?? "") ?? .regular
         textTone = TextTone(rawValue: defaults.string(forKey: "ap.textTone") ?? "") ?? .standard
+        customBackgroundHex = defaults.string(forKey: "ap.customBackgroundHex") ?? "E8E4DC"
         background = BackgroundStyle(rawValue: defaults.string(forKey: "ap.background") ?? "") ?? .pureBlack
         accentMode = AccentMode(rawValue: defaults.string(forKey: "ap.accentMode") ?? "") ?? .followTitle
         fixedAccent = AccentPreset(rawValue: defaults.string(forKey: "ap.fixedAccent") ?? "") ?? .rose
@@ -73,8 +83,12 @@ final class AppearanceSettings {
         }
     }
 
-    var backgroundColor: Color? { background.color }
-    var colorScheme: ColorScheme? { background.colorScheme }
+    var backgroundColor: Color? { background == .custom ? customBackgroundColor : background.color }
+    var colorScheme: ColorScheme? {
+        background == .custom
+            ? (UIColor(rgbHex: customBackgroundHex).relativeLuminance > 0.179 ? .light : .dark)
+            : background.colorScheme
+    }
     var textColor: Color? { textTone.color }
     var dynamicTypeSize: DynamicTypeSize { textSize.dynamicType }
     var fontWeight: Font.Weight? { textWeight.weight }
@@ -140,15 +154,15 @@ enum TextTone: String, CaseIterable, Identifiable {
     var color: Color? {
         switch self {
         case .standard: nil
-        case .warm: Color(red: 0.36, green: 0.30, blue: 0.24)
-        case .cool: Color(red: 0.28, green: 0.32, blue: 0.38)
+        case .warm: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.92, green: 0.87, blue: 0.79, alpha: 1) : UIColor(red: 0.36, green: 0.30, blue: 0.24, alpha: 1) })
+        case .cool: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 0.81, green: 0.87, blue: 0.94, alpha: 1) : UIColor(red: 0.28, green: 0.32, blue: 0.38, alpha: 1) })
         case .highContrast: Color.primary
         }
     }
 }
 
 enum BackgroundStyle: String, CaseIterable, Identifiable {
-    case system, light, dark, pureBlack, paper, midnight
+    case system, light, dark, pureBlack, paper, midnight, custom
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -158,11 +172,12 @@ enum BackgroundStyle: String, CaseIterable, Identifiable {
         case .pureBlack: "純黑"
         case .paper: "米紙"
         case .midnight: "深海藍"
+        case .custom: "自訂顏色"
         }
     }
     var colorScheme: ColorScheme? {
         switch self {
-        case .system: nil
+        case .system, .custom: nil
         case .light, .paper: .light
         case .dark, .pureBlack, .midnight: .dark
         }
@@ -170,7 +185,7 @@ enum BackgroundStyle: String, CaseIterable, Identifiable {
     /// nil 表示使用系統預設背景
     var color: Color? {
         switch self {
-        case .system, .light, .dark: nil
+        case .system, .light, .dark, .custom: nil
         case .pureBlack: .black
         case .paper: Color(red: 0.96, green: 0.94, blue: 0.88)
         case .midnight: Color(red: 0.06, green: 0.09, blue: 0.16)
@@ -254,6 +269,7 @@ extension View {
             .foregroundStyle(settings.textColor ?? .primary)
             .tint(settings.accentColor)
             .preferredColorScheme(settings.colorScheme)
+            .environment(\.appSurface, AppSurface(style: settings.background, customHex: settings.customBackgroundHex))
             .background {
                 if let color = settings.backgroundColor {
                     color.ignoresSafeArea()

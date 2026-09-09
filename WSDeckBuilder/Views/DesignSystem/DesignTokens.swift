@@ -21,12 +21,96 @@ enum Spacing {
 
 // MARK: - 介面表面色
 
-enum AppSurface {
-    static let background = Color(red: 0.02, green: 0.02, blue: 0.025)
-    static let panel = Color(red: 0.11, green: 0.11, blue: 0.12)
-    static let panelElevated = Color(red: 0.15, green: 0.15, blue: 0.17)
-    static let hairline = Color.white.opacity(0.10)
-    static let secondaryText = Color(red: 0.66, green: 0.63, blue: 0.70)
+/// 每個畫面從環境取得相同配色，讓切換背景會立即更新所有分頁與 sheet。
+struct AppSurface {
+    var style: BackgroundStyle = .pureBlack
+    var customHex: String = "E8E4DC"
+
+    var background: Color {
+        switch style {
+        case .system: Color(.systemGroupedBackground)
+        case .light: Color(white: 0.96)
+        case .dark: Color(white: 0.055)
+        case .pureBlack: .black
+        case .paper: Color(red: 0.96, green: 0.94, blue: 0.88)
+        case .midnight: Color(red: 0.06, green: 0.09, blue: 0.16)
+        case .custom: Color(UIColor(rgbHex: customHex))
+        }
+    }
+
+    var panel: Color { surface(elevated: false) }
+    var panelElevated: Color { surface(elevated: true) }
+    var hairline: Color { Color.primary.opacity(0.10) }
+    var secondaryText: Color { .secondary }
+
+    private func surface(elevated: Bool) -> Color {
+        let style = style
+        let custom = UIColor(rgbHex: customHex)
+        return Color(UIColor { traits in
+            let isDark: Bool
+            if style == .system {
+                isDark = traits.userInterfaceStyle == .dark
+            } else if style == .custom {
+                isDark = custom.relativeLuminance <= 0.179
+            } else {
+                isDark = style.colorScheme == .dark
+            }
+            let base: UIColor
+            switch style {
+            case .paper: base = UIColor(red: 0.96, green: 0.94, blue: 0.88, alpha: 1)
+            case .midnight: base = UIColor(red: 0.06, green: 0.09, blue: 0.16, alpha: 1)
+            case .custom: base = custom
+            default: base = isDark ? .black : .white
+            }
+            return base.mixed(with: .white, amount: isDark ? (elevated ? 0.16 : 0.10) : (elevated ? 0.90 : 0.72))
+        })
+    }
+}
+
+private struct AppSurfaceKey: EnvironmentKey {
+    static let defaultValue = AppSurface()
+}
+
+extension EnvironmentValues {
+    var appSurface: AppSurface {
+        get { self[AppSurfaceKey.self] }
+        set { self[AppSurfaceKey.self] = newValue }
+    }
+}
+
+extension UIColor {
+    convenience init(rgbHex: String) {
+        let value = UInt32(rgbHex, radix: 16) ?? 0xE8E4DC
+        self.init(red: CGFloat((value >> 16) & 255) / 255,
+                  green: CGFloat((value >> 8) & 255) / 255,
+                  blue: CGFloat(value & 255) / 255, alpha: 1)
+    }
+
+    var rgbHex: String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "%02X%02X%02X", Int((min(max(r, 0), 1) * 255).rounded()),
+                      Int((min(max(g, 0), 1) * 255).rounded()), Int((min(max(b, 0), 1) * 255).rounded()))
+    }
+
+    var relativeLuminance: Double {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        func linear(_ c: CGFloat) -> Double {
+            let value = Double(c)
+            return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+    }
+
+    func mixed(with other: UIColor, amount: CGFloat) -> UIColor {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        getRed(&r, green: &g, blue: &b, alpha: &a)
+        other.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return UIColor(red: r + (r2 - r) * amount, green: g + (g2 - g) * amount,
+                       blue: b + (b2 - b) * amount, alpha: 1)
+    }
 }
 
 // MARK: - 圓角

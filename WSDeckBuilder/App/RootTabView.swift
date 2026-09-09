@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct RootTabView: View {
+    @Environment(\.appSurface) private var surface
     enum Tab { case home, catalog, deck, settings }
 
     @Environment(CardDatabase.self) private var database
@@ -39,7 +40,7 @@ struct RootTabView: View {
             set: { aiChat.isPresented = $0 })) {
             AIChatSheet()
         }
-        .background(AppSurface.background.ignoresSafeArea())
+        .background(surface.background.ignoresSafeArea())
         .overlay {
             if let error = database.loadError {
                 ContentUnavailableView("資料載入失敗",

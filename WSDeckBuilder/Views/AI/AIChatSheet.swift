@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 浮動聊天視窗：問卡牌效果／問規則共用同一個輸入框跟對話串
 struct AIChatSheet: View {
+    @Environment(\.appSurface) private var surface
     @Environment(AIChatCoordinator.self) private var coordinator
     @Environment(AppearanceSettings.self) private var appearance
     @Environment(\.dismiss) private var dismiss
@@ -20,7 +21,7 @@ struct AIChatSheet: View {
                 messageList
                 inputBar
             }
-            .background(AppSurface.background)
+            .background(surface.background)
             .navigationTitle("問 AI")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

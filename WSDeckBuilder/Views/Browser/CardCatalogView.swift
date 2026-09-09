@@ -16,6 +16,7 @@ enum CatalogRoute: Hashable {
 /// 三種進法共用同一個畫面，差別只在「有沒有鎖定作品」與「閒置時顯不顯示作品選單」，
 /// 拆成三個 View 會讓搜尋、篩選、加牌那套狀態複製三份。
 struct CardCatalogView: View {
+    @Environment(\.appSurface) private var surface
     let route: CatalogRoute
 
     @Environment(CardDatabase.self) private var database
@@ -378,7 +379,7 @@ struct CardCatalogView: View {
             .padding(.bottom, 140)
         }
         .scrollContentBackground(.hidden)
-        .background(AppSurface.background)
+        .background(surface.background)
     }
 
     private var list: some View {
@@ -389,7 +390,7 @@ struct CardCatalogView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .background(AppSurface.background)
+        .background(surface.background)
         .clearsGlassTabBar()
     }
 }

@@ -4,6 +4,7 @@ import SwiftUI
 
 /// 牌組分頁：牌組列表、新增/刪除/重新命名（§4.3）
 struct DeckListView: View {
+    @Environment(\.appSurface) private var surface
     @Environment(\.modelContext) private var context
     @Environment(CardDatabase.self) private var database
     @Environment(OnboardingCoordinator.self) private var onboarding
@@ -28,6 +29,31 @@ struct DeckListView: View {
     var body: some View {
         NavigationStack {
             List {
+                if !decks.isEmpty {
+                    VStack(alignment: .leading, spacing: Spacing.s16) {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: Spacing.s4) {
+                                Text("我的牌組").font(.largeTitle.bold())
+                                Text("\(decks.count) 副牌組")
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Button {
+                                createName = "新牌組 \(decks.count + 1)"
+                                showCreateAlert = true
+                            } label: {
+                                Label("建立", systemImage: "plus")
+                            }
+                            .buttonStyle(.filled)
+                        }
+                        Label("向右滑釘選到首頁，向左滑管理牌組", systemImage: "hand.draw")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, Spacing.s8)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                }
                 ForEach(decks) { deck in
                     ZStack {
                         // NavigationLink 的預設樣式會壓過自訂卡片，藏起來只留行為
@@ -75,9 +101,10 @@ struct DeckListView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .background(AppSurface.background)
+            .background(surface.background)
             .clearsGlassTabBar()
             .navigationTitle("牌組")
+            .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: UUID.self) { uuid in
                 if let deck = decks.first(where: { $0.uuid == uuid }) {
                     DeckDetailView(deck: deck)
@@ -161,12 +188,21 @@ struct DeckListView: View {
                             .foregroundStyle(Color.accentColor)
                         Text("還沒有牌組")
                             .font(.title3.bold())
-                        Text("點右上角＋建立第一副牌組")
+                        Text("先建立一副牌組，再到圖鑑挑選卡片。")
                             .font(.subheadline)
-                            .foregroundStyle(AppSurface.secondaryText)
+                            .foregroundStyle(surface.secondaryText)
+                        Button {
+                            createName = "我的第一副牌組"
+                            showCreateAlert = true
+                        } label: {
+                            Label("建立第一副牌組", systemImage: "plus")
+                        }
+                        .buttonStyle(.filled)
+                        Button("掃描 QR Code 匯入") { showQRScanner = true }
+                            .buttonStyle(.tonal)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(AppSurface.background)
+                    .background(surface.background)
                 }
             }
             .alert("重新命名", isPresented: .init(
@@ -207,7 +243,7 @@ struct DeckListView: View {
                         .overlay {
                             Image(systemName: "rectangle.stack")
                                 .font(.title2)
-                                .foregroundStyle(.white.opacity(0.5))
+                                .foregroundStyle(Color.primary.opacity(0.5))
                         }
                 }
             }
@@ -217,16 +253,16 @@ struct DeckListView: View {
                 HStack(spacing: 6) {
                     Text(deck.name)
                         .font(.headline)
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .shadow(color: .black.opacity(0.5), radius: 2, y: 1)
+                        .foregroundStyle(Color.primary)
+                        .lineLimit(2)
+
                     if isActive {
                         Text("編輯中")
                             .font(.caption2.weight(.bold))
-                            .foregroundStyle(.black.opacity(0.75))
+                            .foregroundStyle(Color.accentColor)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 2)
-                            .background(.white.opacity(0.9), in: Capsule())
+                            .background(Color.accentColor.opacity(0.12), in: Capsule())
                     }
                 }
 
@@ -234,7 +270,7 @@ struct DeckListView: View {
                 if let title = titleName(for: deck) {
                     Text(title)
                         .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(Color.primary.opacity(0.75))
                         .lineLimit(1)
                 }
 
@@ -261,19 +297,19 @@ struct DeckListView: View {
 
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Color.primary.opacity(0.5))
         }
-        .padding(Spacing.s16)
+        .padding(Spacing.s24)
         .background {
             ZStack {
                 // 底色先鋪滿，卡圖載入前後都不會露出空白
-                AppSurface.panelElevated
-                CardArtBackdrop(printing: cover, blur: 22, opacity: 1, saturation: 2.1)
+                surface.panelElevated
+                CardArtBackdrop(printing: cover, blur: 28, opacity: 0.18, saturation: 0.6)
                 // 文字那側壓深，右側留亮，白字讀得清楚又保得住卡面色調
                 LinearGradient(stops: [
-                    .init(color: .black.opacity(0.62), location: 0),
-                    .init(color: .black.opacity(0.45), location: 0.55),
-                    .init(color: .black.opacity(0.22), location: 1),
+                    .init(color: surface.panel.opacity(0.90), location: 0),
+                    .init(color: surface.panel.opacity(0.80), location: 0.55),
+                    .init(color: surface.panel.opacity(0.55), location: 1),
                 ], startPoint: .leading, endPoint: .trailing)
             }
         }
@@ -281,22 +317,22 @@ struct DeckListView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(isActive ? Color.accentColor.opacity(0.9)
-                                       : .white.opacity(0.12),
+                                       : surface.hairline,
                               lineWidth: isActive ? 2 : 1)
         }
-        .comfortShadow(.floating)
+        .comfortShadow(.card)
     }
 
     /// 深色卡面上的狀態標籤：達標亮綠，未達標維持中性
     private func statusChip(_ text: String, ok: Bool) -> some View {
         Text(text)
             .font(.caption2.monospacedDigit().weight(.semibold))
-            .foregroundStyle(ok ? .green : .white.opacity(0.9))
+            .foregroundStyle(ok ? .green : Color.primary.opacity(0.9))
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
-            .background(.black.opacity(0.28), in: Capsule())
+            .background(Color.primary.opacity(0.05), in: Capsule())
             .overlay {
-                Capsule().strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+                Capsule().strokeBorder(surface.hairline, lineWidth: 0.5)
             }
     }
 
@@ -329,7 +365,7 @@ struct DeckListView: View {
         return GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(.black.opacity(0.35))
+                    .fill(Color.primary.opacity(0.10))
                 HStack(spacing: 1.5) {
                     ForEach(CardColor.allCases) { color in
                         if let count = counts[color], count > 0 {

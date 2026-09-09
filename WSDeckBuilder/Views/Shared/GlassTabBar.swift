@@ -7,6 +7,7 @@ struct GlassTabBarItem<ID: Hashable>: Identifiable {
 }
 
 struct GlassTabBar<ID: Hashable>: View {
+    @Environment(\.appSurface) private var surface
     let items: [GlassTabBarItem<ID>]
     @Binding var selection: ID
 
@@ -20,21 +21,21 @@ struct GlassTabBar<ID: Hashable>: View {
                 } label: {
                     VStack(spacing: 4) {
                         Image(systemName: item.systemImage)
-                            .font(.system(size: 25, weight: .bold))
+                            .font(.system(size: 21, weight: .semibold))
                             .symbolRenderingMode(.hierarchical)
                         Text(item.title)
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.caption2.weight(.semibold))
                     }
-                    .foregroundStyle(selection == item.id ? Color.accentColor : .white.opacity(0.92))
+                    .foregroundStyle(selection == item.id ? Color.primary : Color.primary.opacity(0.55))
                     .frame(maxWidth: .infinity)
-                    .frame(height: 66)
+                    .frame(minHeight: 54)
                     .background {
                         if selection == item.id {
                             Capsule()
-                                .fill(Color.white.opacity(0.12))
+                                .fill(Color.primary.opacity(0.08))
                                 .overlay {
                                     Capsule()
-                                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
                                 }
                         }
                     }
@@ -42,21 +43,22 @@ struct GlassTabBar<ID: Hashable>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(item.title)
+                .accessibilityAddTraits(selection == item.id ? .isSelected : [])
             }
         }
         .padding(7)
         .frame(maxWidth: 430)
-        .frame(height: 82)
+        .frame(minHeight: 68)
         .background {
             Capsule()
                 .fill(.ultraThinMaterial)
                 .overlay {
                     Capsule()
-                        .fill(AppSurface.panel.opacity(0.74))
+                        .fill(surface.panel.opacity(0.74))
                 }
                 .overlay {
                     Capsule()
-                        .strokeBorder(AppSurface.hairline, lineWidth: 1)
+                        .strokeBorder(surface.hairline, lineWidth: 1)
                 }
         }
         .comfortShadow(.floating)

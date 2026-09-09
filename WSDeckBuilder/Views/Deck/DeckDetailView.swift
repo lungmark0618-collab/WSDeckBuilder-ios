@@ -3,6 +3,7 @@ import SwiftUI
 
 /// 單一牌組編輯，依等級分組；卡表／統計／缺卡切換，卡表可切圖片或清單（§4.3）
 struct DeckDetailView: View {
+    @Environment(\.appSurface) private var surface
     @Bindable var deck: Deck
     @Environment(CardDatabase.self) private var database
     @Environment(\.modelContext) private var context
@@ -71,7 +72,7 @@ struct DeckDetailView: View {
             case .shortage: shortageList
             }
         }
-        .background(AppSurface.background)
+        .background(surface.background)
         .navigationTitle(deck.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -238,7 +239,7 @@ struct DeckDetailView: View {
             .padding(.bottom, 140)
         }
         .scrollContentBackground(.hidden)
-        .background(AppSurface.background)
+        .background(surface.background)
         .overlay {
             if deck.entries.isEmpty {
                 ContentUnavailableView("牌組是空的",
@@ -297,7 +298,7 @@ struct DeckDetailView: View {
                 pendingSwapOldMidY = nil
             }
         }
-        .background(AppSurface.background)
+        .background(surface.background)
         .clearsGlassTabBar()
         .overlay {
             if deck.entries.isEmpty {

@@ -3,6 +3,7 @@ import SwiftUI
 /// 公告詳情：先讓使用者看重點（規格重點或至少標題／分類／日期），
 /// 有興趣才點下面的按鈕去官網看完整內容——不是點一下就直接跳出 App。
 struct NewsDetailSheet: View {
+    @Environment(\.appSurface) private var surface
     let item: WSNewsItem
     @Environment(\.dismiss) private var dismiss
 
@@ -18,7 +19,7 @@ struct NewsDetailSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
-                                    .strokeBorder(AppSurface.hairline, lineWidth: 1)
+                                    .strokeBorder(surface.hairline, lineWidth: 1)
                             }
                     }
                     header
@@ -31,7 +32,7 @@ struct NewsDetailSheet: View {
                 }
                 .padding(Spacing.s16)
             }
-            .background(AppSurface.background)
+            .background(surface.background)
             .navigationTitle("公告詳情")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -88,10 +89,10 @@ struct NewsDetailSheet: View {
         }
         .padding(Spacing.s16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppSurface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+        .background(surface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Radius.mid, style: .continuous)
-                .strokeBorder(AppSurface.hairline, lineWidth: 1)
+                .strokeBorder(surface.hairline, lineWidth: 1)
         }
     }
 
@@ -107,7 +108,7 @@ struct NewsDetailSheet: View {
         }
         .padding(Spacing.s16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppSurface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
+        .background(surface.panel, in: RoundedRectangle(cornerRadius: Radius.mid, style: .continuous))
     }
 
     private var linkButton: some View {
