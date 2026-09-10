@@ -30,6 +30,7 @@ struct AIChatSheet: View {
                 }
             }
         }
+        .swipeToGoBack()
     }
 
     private var messageList: some View {

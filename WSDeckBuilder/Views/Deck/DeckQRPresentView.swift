@@ -45,5 +45,6 @@ struct DeckQRPresentView: View {
                 }
             }
         }
+        .swipeToGoBack()
     }
 }

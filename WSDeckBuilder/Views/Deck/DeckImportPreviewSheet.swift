@@ -65,6 +65,7 @@ struct DeckImportPreviewSheet: View {
                 Text(importError ?? "")
             }
         }
+        .swipeToGoBack()
     }
 
     private func importNow() {

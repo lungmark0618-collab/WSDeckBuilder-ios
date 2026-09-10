@@ -48,6 +48,7 @@ struct AnnouncementListView: View {
             }
         }
         .onAppear { center.markAllRead() }
+        .swipeToGoBack()
     }
 
     private func row(for item: Announcement) -> some View {

@@ -2,6 +2,7 @@ import SwiftUI
 
 /// 設定分頁：網路政策、快取管理、預先下載（§4.4.6 / §4.4.7）
 struct SettingsView: View {
+    var onBack: () -> Void = {}
     @Environment(\.appSurface) private var surface
     @Environment(CardDatabase.self) private var database
     @Environment(DataUpdater.self) private var updater
@@ -46,7 +47,9 @@ struct SettingsView: View {
             .scrollContentBackground(.hidden)
             .background(surface.background)
             .clearsGlassTabBar()
+            .swipeToGoBack(action: onBack)
             .navigationTitle("設定")
+            .toolbar { ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() } }
             .task { await refreshCacheInfo() }
         }
     }

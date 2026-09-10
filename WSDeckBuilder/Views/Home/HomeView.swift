@@ -94,6 +94,7 @@ struct HomeView: View {
                 if news.items.isEmpty { await news.refresh() }
             }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: Spacing.s4) {
                         Button {
@@ -114,6 +115,7 @@ struct HomeView: View {
                 NavigationStack {
                     DeckDetailView(deck: deck)
                 }
+                .swipeToGoBack()
             }
             .sheet(isPresented: $showingCategoryFilter) {
                 NewsCategoryFilterSheet(store: categoryFilter)
@@ -394,5 +396,6 @@ private struct NewsCategoryFilterSheet: View {
             }
         }
         .presentationDetents([.medium])
+        .swipeToGoBack()
     }
 }

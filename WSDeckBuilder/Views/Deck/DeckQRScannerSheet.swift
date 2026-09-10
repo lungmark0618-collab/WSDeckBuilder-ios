@@ -51,6 +51,7 @@ struct DeckQRScannerSheet: View {
                 }
             }
         }
+        .swipeToGoBack()
     }
 
     private func requestAccess() async {

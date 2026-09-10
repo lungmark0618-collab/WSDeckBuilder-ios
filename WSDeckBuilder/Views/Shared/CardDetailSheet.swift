@@ -12,6 +12,7 @@ struct CardDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppearanceSettings.self) private var appearance
     @Environment(AIChatCoordinator.self) private var aiChat
+    @State private var path: [Card] = []
     @State private var selection: String = ""
 
     /// 目前左右滑動停在哪一頁，「問 AI」要帶這張卡的資料，不是固定帶最初開啟的那張
@@ -29,7 +30,7 @@ struct CardDetailSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if pages.count > 1 {
                     TabView(selection: $selection) {
@@ -69,6 +70,9 @@ struct CardDetailSheet: View {
                     Button("完成") { dismiss() }
                 }
             }
+        }
+        .swipeToGoBack {
+            if path.isEmpty { dismiss() } else { path.removeLast() }
         }
         .onAppear { if selection.isEmpty { selection = card.id } }
     }

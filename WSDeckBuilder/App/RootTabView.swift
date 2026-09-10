@@ -10,12 +10,17 @@ struct RootTabView: View {
     @Environment(AIChatCoordinator.self) private var aiChat
     // 使用者要求首頁（官網公告）取代圖鑑成為開場畫面
     @State private var selectedTab: Tab = .home
+    @State private var tabBeforeSettings: Tab = .home
+    @State private var showSidebar = false
+    @State private var catalogPath: [CatalogRoute] = []
+    @State private var deckPath: [UUID] = []
+    @State private var importAction: SidebarImportAction?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let tabs: [GlassTabBarItem<Tab>] = [
         .init(id: .home, title: "首頁", systemImage: "house.fill"),
         .init(id: .catalog, title: "圖鑑", systemImage: "magnifyingglass"),
-        .init(id: .deck, title: "牌組", systemImage: "books.vertical.fill"),
-        .init(id: .settings, title: "設定", systemImage: "gearshape.fill")
+        .init(id: .deck, title: "牌組", systemImage: "books.vertical.fill")
     ]
 
     var body: some View {
@@ -25,16 +30,60 @@ struct RootTabView: View {
                 case .home:
                     HomeView()
                 case .catalog:
-                    CardBrowserView()
+                    CardBrowserView(path: $catalogPath)
                 case .deck:
-                    DeckListView()
+                    DeckListView(path: $deckPath, sidebarImport: $importAction)
                 case .settings:
-                    SettingsView()
+                    SettingsView { selectedTab = tabBeforeSettings }
                 }
             }
             GlassTabBar(items: tabs, selection: $selectedTab)
         }
-        .overlay(alignment: .bottomTrailing) { FloatingChatButton() }
+        .overlay(alignment: .bottomTrailing) { if !showSidebar { FloatingChatButton() } }
+        .accessibilityHidden(showSidebar)
+        .environment(\.openAppSidebar, { setSidebar(true) })
+        .overlay {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    if showSidebar {
+                        Color.black.opacity(0.38).ignoresSafeArea()
+                            .onTapGesture { setSidebar(false) }
+                            .accessibilityLabel("關閉選單")
+                            .accessibilityAddTraits(.isButton)
+                            .transition(.opacity)
+                        AppSidebarView(
+                            onClose: { setSidebar(false) },
+                            onTab: { tab in
+                                if tab == .catalog { catalogPath = [] }
+                                if tab == .deck { deckPath = [] }
+                                selectedTab = tab; setSidebar(false)
+                            },
+                            onDeck: { uuid in
+                                deckPath = [uuid]; selectedTab = .deck; setSidebar(false)
+                            },
+                            onTitle: { code in
+                                catalogPath = [.title(code)]; selectedTab = .catalog; setSidebar(false)
+                            },
+                            onImport: { action in
+                                deckPath = []; selectedTab = .deck; setSidebar(false)
+                                importAction = action
+                            },
+                            onAI: { setSidebar(false); aiChat.openGeneral() }
+                        )
+                        .frame(width: min(geometry.size.width * 0.82, 360), height: geometry.size.height)
+                        .background(surface.background)
+                        .transition(.move(edge: .leading))
+                        .simultaneousGesture(DragGesture().onEnded { value in
+                            if value.translation.width < -60 && abs(value.translation.width) > abs(value.translation.height) {
+                                setSidebar(false)
+                            }
+                        })
+                        .accessibilityAction(.escape) { setSidebar(false) }
+                    }
+                }
+                .allowsHitTesting(showSidebar)
+            }
+        }
         .sheet(isPresented: Binding(
             get: { aiChat.isPresented },
             set: { aiChat.isPresented = $0 })) {
@@ -58,6 +107,9 @@ struct RootTabView: View {
                     anchors[step].map { proxy[$0] }
                 }
             }
+        }
+        .onChange(of: selectedTab) { old, new in
+            if new == .settings && old != .settings { tabBeforeSettings = old }
         }
         // 每一步該在哪個分頁，教學自己切過去——不然從「設定」按幫助重新開始教學，
         // 第一步「搜尋卡片」會卡在設定頁，找不到搜尋列
@@ -83,6 +135,12 @@ struct RootTabView: View {
             Button("好") {}
         } message: {
             Text(deckImport.errorMessage ?? "")
+        }
+    }
+
+    private func setSidebar(_ visible: Bool) {
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+            showSidebar = visible
         }
     }
 

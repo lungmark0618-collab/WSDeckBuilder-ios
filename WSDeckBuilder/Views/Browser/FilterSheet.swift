@@ -116,6 +116,7 @@ struct FilterSheet: View {
         .scrollContentBackground(.hidden)
         .safeAreaInset(edge: .top, spacing: 0) { topBar }
         .presentationBackground(.ultraThinMaterial)
+        .swipeToGoBack()
     }
 
     private var topBar: some View {

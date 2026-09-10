@@ -198,6 +198,9 @@ struct CardCatalogView: View {
     // this expression in reasonable time"），拆開讓編譯器分開推斷才過得了
     @ToolbarContentBuilder
     private var catalogToolbar: some ToolbarContent {
+        if route == .root {
+            ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
+        }
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button {
                 showFilter = true

@@ -100,6 +100,7 @@ struct ActiveDeckQuickView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .swipeToGoBack()
     }
 
     private var grid: some View {

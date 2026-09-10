@@ -69,6 +69,7 @@ struct DeckCoverPickerView: View {
                 }
             }
         }
+        .swipeToGoBack()
     }
 
     private var hintBar: some View {

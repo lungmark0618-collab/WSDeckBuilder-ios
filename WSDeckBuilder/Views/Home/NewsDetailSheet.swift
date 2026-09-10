@@ -42,6 +42,7 @@ struct NewsDetailSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+        .swipeToGoBack()
     }
 
     private var header: some View {

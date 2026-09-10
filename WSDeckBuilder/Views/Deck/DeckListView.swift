@@ -4,6 +4,8 @@ import SwiftUI
 
 /// 牌組分頁：牌組列表、新增/刪除/重新命名（§4.3）
 struct DeckListView: View {
+    @Binding var path: [UUID]
+    @Binding var sidebarImport: SidebarImportAction?
     @Environment(\.appSurface) private var surface
     @Environment(\.modelContext) private var context
     @Environment(CardDatabase.self) private var database
@@ -27,7 +29,7 @@ struct DeckListView: View {
     @State private var pickedImageItem: PhotosPickerItem?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 if !decks.isEmpty {
                     VStack(alignment: .leading, spacing: Spacing.s16) {
@@ -111,7 +113,19 @@ struct DeckListView: View {
                         .swipeToGoBack()
                 }
             }
+            .onChange(of: sidebarImport, initial: true) { _, action in
+                guard let action else { return }
+                sidebarImport = nil
+                switch action {
+                case .camera: showQRScanner = true
+                case .photo: showPhotoPicker = true
+                case .file: showFileImporter = true
+                case .text: pastedText = ""; showPasteSheet = true
+                }
+            }
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
+                ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button {
                         createName = "新牌組 \(decks.count + 1)"
@@ -147,12 +161,13 @@ struct DeckListView: View {
                     Image(systemName: "plus")
                 }
                 .onboardingAnchor(.createDeck)
+                }
             }
             .fileImporter(isPresented: $showFileImporter,
                           allowedContentTypes: [.json, .plainText, .text]) { result in
                 handleFileImport(result)
             }
-            .sheet(isPresented: $showPasteSheet) { pasteSheet }
+            .sheet(isPresented: $showPasteSheet) { pasteSheet.swipeToGoBack() }
             .fullScreenCover(isPresented: $showQRScanner) { DeckQRScannerSheet() }
             .photosPicker(isPresented: $showPhotoPicker,
                           selection: $pickedImageItem, matching: .images)
