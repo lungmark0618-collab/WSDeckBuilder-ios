@@ -9,12 +9,15 @@ struct SearchQuery: Equatable {
     var traits: Set<String> = []
     var sourceOnly: CardSource? = nil
     var titleCode: String? = nil    // 作品篩選（nil = 全部）
+    /// 彈次（商品代碼，如 "OVL/S66"）篩選，拆很多彈、卡號雜的作品選了「不分彈」
+    /// 之後用來縮小範圍。空 = 不篩選
+    var waves: Set<String> = []
     var ownership: OwnershipFilter = .all
 
     var hasActiveFilters: Bool {
         !levels.isEmpty || !colors.isEmpty || !types.isEmpty
             || !triggers.isEmpty || !traits.isEmpty || sourceOnly != nil
-            || titleCode != nil || ownership != .all
+            || titleCode != nil || !waves.isEmpty || ownership != .all
     }
 
     /// 關鍵字以外的條件指紋，供畫面判斷該不該重算搜尋結果。

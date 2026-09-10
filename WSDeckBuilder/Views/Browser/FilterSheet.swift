@@ -43,6 +43,19 @@ struct FilterSheet: View {
         return name.map { "特徵（\($0)）" } ?? "特徵"
     }
 
+    /// 拆很多彈的作品（如 OVERLORD 有 S62／S66／SE54…）卡號雜，只認得卡面、
+    /// 不知道自己在哪一彈時，靠這個縮小範圍。只有選了作品才會有東西可選——
+    /// 條件同 availableTraits，見上方註解
+    private var availableWaves: [BrowsableSet] {
+        guard let scope = query.titleCode else { return [] }
+        return database.waves(inScope: scope)
+    }
+
+    private func waveLabel(for code: String) -> String {
+        guard let set = availableWaves.first(where: { $0.id == code }) else { return code }
+        return set.waveLabel ?? set.id.split(separator: "/").last.map(String.init) ?? set.id
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.s24) {
@@ -93,6 +106,12 @@ struct FilterSheet: View {
                 if query.titleCode != nil {
                     multiSelectCard(traitsCardTitle, items: availableTraits, set: $query.traits) {
                         toggleFlow(items: availableTraits, set: $query.traits) { "《\($0)》" }
+                    }
+                }
+                if !availableWaves.isEmpty {
+                    let waveCodes = availableWaves.map(\.id)
+                    multiSelectCard("彈次", items: waveCodes, set: $query.waves) {
+                        toggleFlow(items: waveCodes, set: $query.waves) { waveLabel(for: $0) }
                     }
                 }
                 card("我的收藏") {

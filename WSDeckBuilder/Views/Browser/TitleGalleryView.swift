@@ -1,5 +1,35 @@
 import SwiftUI
 
+/// 「探索作品」畫面的排序方式。等級／顏色／種類這些卡片層級的條件對選作品
+/// 沒有意義，這裡只提供跟「挑一部作品」真正相關的排序依據
+enum TitleSortOrder: String, CaseIterable, Identifiable {
+    /// 卡片數多的代表反覆會翻的熱門作品，當預設值
+    case cardCount
+    /// Bushiroad 的彈次編號（S108、S136…）全系列共用同一個流水號，數字愈大
+    /// 愈晚發售，不必額外維護發售日期欄位就能猜出「哪些是最近出的」
+    case newest
+    /// 中文筆劃排序，找不到想找的作品在哪、想照傳統字典順序翻的時候用
+    case stroke
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .cardCount: "卡片數（多→少）"
+        case .newest: "由新到舊"
+        case .stroke: "筆劃"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .cardCount: "chart.bar.fill"
+        case .newest: "clock.fill"
+        case .stroke: "textformat.abc"
+        }
+    }
+}
+
 /// 圖鑑的第一層：先選作品，再看卡。
 ///
 /// 3400 多張卡一次全攤開沒人找得到東西，而使用者心裡的第一個問題幾乎都是
@@ -11,14 +41,31 @@ struct TitleGalleryView: View {
     let totalCount: Int
     /// 目前是否正在用關鍵字篩選作品；篩完是空的時候才顯示「沒有符合的作品」
     var isFiltering: Bool = false
+    var sortOrder: TitleSortOrder = .cardCount
 
     @Environment(FavoriteTitlesStore.self) private var favorites
+    @Environment(CardDatabase.self) private var database
 
-    /// 卡多的作品排前面——會反覆翻的就是那幾部，照代號排等於隨機順序。
     /// 拆很多彈的作品（如 OVERLORD）另外併一張「不分彈」的卡片：只認得卡面、
-    /// 不知道自己要找哪一彈的人，可以一次瀏覽整個系列，不用一彈一彈點進去找
+    /// 不知道自己要找哪一彈的人，可以一次瀏覽整個系列，不用一彈一彈點進去找。
+    /// 排序依 sortOrder 而定，見 TitleSortOrder
     private var ordered: [BrowsableSet] {
-        withCombinedEntries(sets).sorted { $0.cardCount > $1.cardCount }
+        let combined = withCombinedEntries(sets)
+        switch sortOrder {
+        case .cardCount:
+            return combined.sorted { $0.cardCount > $1.cardCount }
+        case .newest:
+            return combined.sorted {
+                database.newestSetNumber(forTitleCode: $0.titleCode)
+                    > database.newestSetNumber(forTitleCode: $1.titleCode)
+            }
+        case .stroke:
+            let locale = Locale(identifier: "zh-Hant@collation=stroke")
+            return combined.sorted {
+                $0.titleNameZH.compare($1.titleNameZH, options: [], range: nil, locale: locale)
+                    == .orderedAscending
+            }
+        }
     }
 
     private func withCombinedEntries(_ items: [BrowsableSet]) -> [BrowsableSet] {

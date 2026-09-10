@@ -26,6 +26,10 @@ struct CardCatalogView: View {
     @Query private var collection: [CollectionEntry]
     @AppStorage("activeDeckUUID") private var activeDeckUUID: String = ""
     @AppStorage("browserUsesGrid") private var usesGrid = true
+    /// 「探索作品」畫面的排序方式，等級／顏色這些卡片層級條件對選作品沒有
+    /// 意義，改用獨立的排序選單取代舊的篩選面板（見 catalogToolbar）
+    @AppStorage("titleGallerySortOrder") private var sortOrderRaw = TitleSortOrder.cardCount.rawValue
+    private var sortOrder: TitleSortOrder { TitleSortOrder(rawValue: sortOrderRaw) ?? .cardCount }
 
     @State private var query: SearchQuery
     @State private var showFilter = false
@@ -158,7 +162,8 @@ struct CardCatalogView: View {
         Group {
             if showsGallery {
                 TitleGalleryView(sets: gallerySets, totalCount: database.cards.count,
-                                 isFiltering: !query.keyword.trimmingCharacters(in: .whitespaces).isEmpty)
+                                 isFiltering: !query.keyword.trimmingCharacters(in: .whitespaces).isEmpty,
+                                 sortOrder: sortOrder)
             } else if usesGrid {
                 grid
             } else {
@@ -202,15 +207,34 @@ struct CardCatalogView: View {
             ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
         }
         ToolbarItemGroup(placement: .topBarTrailing) {
-            Button {
-                showFilter = true
-                onboarding.notify(.filter)
-            } label: {
-                Image(systemName: query.hasActiveFilters
-                      ? "line.3.horizontal.decrease.circle.fill"
-                      : "line.3.horizontal.decrease.circle")
+            // 作品選單這一層沒有等級／顏色可篩，篩選鈕在這裡換成排序選單——
+            // 挑作品跟挑卡片是兩件事，見 TitleSortOrder 開頭註解
+            if showsGallery {
+                Menu {
+                    Picker("排序方式", selection: $sortOrderRaw) {
+                        ForEach(TitleSortOrder.allCases) { order in
+                            Label(order.label, systemImage: order.systemImage).tag(order.rawValue)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down.circle")
+                }
+                // Menu 本身吃掉一般的 tap，用 simultaneousGesture 才會跟開選單
+                // 同時觸發，改成監聽 onChange 的話使用者選到原本就選中的那個
+                // 選項時教學會卡住不動
+                .simultaneousGesture(TapGesture().onEnded { onboarding.notify(.filter) })
+                .onboardingAnchor(.filter)
+            } else {
+                Button {
+                    showFilter = true
+                    onboarding.notify(.filter)
+                } label: {
+                    Image(systemName: query.hasActiveFilters
+                          ? "line.3.horizontal.decrease.circle.fill"
+                          : "line.3.horizontal.decrease.circle")
+                }
+                .onboardingAnchor(.filter)
             }
-            .onboardingAnchor(.filter)
             if !showsGallery {
                 Button {
                     usesGrid.toggle()
@@ -296,6 +320,7 @@ struct CardCatalogView: View {
         if !query.traits.isEmpty {
             parts.append(query.traits.sorted().joined(separator: "/"))
         }
+        if !query.waves.isEmpty { parts.append("彈次×\(query.waves.count)") }
         if let source = query.sourceOnly { parts.append(source.label) }
         if query.ownership != .all { parts.append(query.ownership.label) }
         return parts.joined(separator: " · ")

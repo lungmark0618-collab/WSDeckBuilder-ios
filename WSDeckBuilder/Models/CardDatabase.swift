@@ -227,9 +227,22 @@ final class CardDatabase {
     }
 
     /// 商品代碼結尾的數字（如 "SFN/S108" → 108），沒有數字結尾就當 0
-    private static func numericSuffix(_ code: String) -> Int {
+    /// 商品代碼結尾的數字，非 private——「由新到舊」排序（見 newestSetNumber）
+    /// 跟拆彈排序共用同一套規則
+    static func numericSuffix(_ code: String) -> Int {
         let digits = code.reversed().prefix(while: \.isNumber)
         return Int(String(digits.reversed())) ?? 0
+    }
+
+    /// 這部作品目前收錄最新一波的商品代碼數字，供「探索作品」畫面「由新到舊」
+    /// 排序用。Bushiroad 的彈次編號（如 S108、S136）全系列共用同一個流水號，
+    /// 數字愈大代表愈晚發售，不必額外維護發售日期欄位
+    func newestSetNumber(forTitleCode titleCode: String) -> Int {
+        cardsByTitleCode(titleCode).map { Self.numericSuffix($0.productCode) }.max() ?? 0
+    }
+
+    private func cardsByTitleCode(_ titleCode: String) -> [Card] {
+        cards.filter { titleByCardID[$0.id] == titleCode }
     }
 
     private static let chineseOrdinals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
@@ -326,6 +339,16 @@ final class CardDatabase {
     /// 裡，縮小範圍才看得出「這裡有哪些特徵可以篩」
     func traits(inScope scope: String) -> [String] {
         Array(Set(cards(inScope: scope).flatMap(\.traitsZH))).sorted()
+    }
+
+    /// 這個瀏覽範圍拆出的彈次選項（如 OVL 底下的 S62／S66／SE54…），只有
+    /// 拆過彈的作品才有東西可選——「不分彈」瀏覽整個作品、或直接鎖進某彈時，
+    /// 讓使用者進一步縮小到某幾彈。只有 1 個彈次可選時回傳空陣列，篩選頁
+    /// 才知道要整區藏起來，不然選了也等於沒選
+    func waves(inScope scope: String) -> [BrowsableSet] {
+        let scopeTitleCode = browsableSets.first(where: { $0.id == scope })?.titleCode ?? scope
+        let matches = browsableSets.filter { $0.titleCode == scopeTitleCode && $0.productCode != nil }
+        return matches.count > 1 ? matches : []
     }
 
     func card(forPrinting id: String) -> Card? { cardIndex[id] }
@@ -437,6 +460,7 @@ final class CardDatabase {
             }
             if !query.traits.isEmpty,
                !card.traitsZH.contains(where: { query.traits.contains($0) }) { return false }
+            if !query.waves.isEmpty, !query.waves.contains(card.productCode) { return false }
             if let source = query.sourceOnly, card.source != source { return false }
             return true
         }
