@@ -87,6 +87,62 @@ final class DeckValidatorTests: XCTestCase {
         XCTAssertEqual(result.climaxCount, 4)
         XCTAssertFalse(result.climaxOK)
     }
+
+    // MARK: - 組牌限制例外表（同名可超過4張、複數卡名合計限制）
+
+    /// 卡片能力明講「此卡同名可放 N 張」的例外，超過標準 4 張不該被標成違規
+    func testSameNameExceptionAllowsFixedLimitAboveFour() {
+        let card = makeCard(id: "OVL/S99-047", name: "黒い仔山羊")
+        let rules = NameLimitRules(defaultLimit: 4, groupByName: [
+            "黒い仔山羊": .init(names: ["黒い仔山羊"], limit: 5),
+        ])
+        let items = [DeckValidator.CountedCard(card: card, count: 5)]
+        let result = DeckValidator.validate(items, rules: rules)
+        XCTAssertTrue(result.namesOK)
+        XCTAssertEqual(DeckValidator.nameLimit(for: card, rules: rules), 5)
+    }
+
+    /// 卡片能力明講「此卡同名可放任意張」的例外，完全不受同名上限限制
+    func testSameNameExceptionAllowsUnlimited() {
+        let card = makeCard(id: "OVL/S99-090", name: "ゴブリン軍楽隊")
+        let rules = NameLimitRules(defaultLimit: 4, groupByName: [
+            "ゴブリン軍楽隊": .init(names: ["ゴブリン軍楽隊"], limit: nil),
+        ])
+        let items = [DeckValidator.CountedCard(card: card, count: 20)]
+        let result = DeckValidator.validate(items, rules: rules)
+        XCTAssertTrue(result.namesOK)
+        XCTAssertNil(DeckValidator.nameLimit(for: card, rules: rules))
+    }
+
+    /// 兩個不同卡名合計共用一個上限（如覺醒/變身關係），分開各 3 張沒事，
+    /// 但合計超過就該標違規——這是原本依卡名各自獨立計算會漏抓的情況
+    func testCombinedNameLimitPoolsAcrossDifferentNames() {
+        let base = makeCard(id: "PJS/S109-114", name: "えむ流？ダンスの極意！ 小豆沢こはね")
+        let awakened = makeCard(id: "PJS/S109-999", name: "Beat Eater/Awake Now")
+        let group = NameLimitRules.Group(
+            names: ["えむ流？ダンスの極意！ 小豆沢こはね", "Beat Eater/Awake Now"], limit: 4)
+        let rules = NameLimitRules(defaultLimit: 4, groupByName: [
+            "えむ流？ダンスの極意！ 小豆沢こはね": group,
+            "Beat Eater/Awake Now": group,
+        ])
+        let withinLimit = [
+            DeckValidator.CountedCard(card: base, count: 2),
+            DeckValidator.CountedCard(card: awakened, count: 2),
+        ]
+        XCTAssertTrue(DeckValidator.validate(withinLimit, rules: rules).namesOK)
+
+        let overLimit = [
+            DeckValidator.CountedCard(card: base, count: 3),
+            DeckValidator.CountedCard(card: awakened, count: 2),
+        ]
+        XCTAssertFalse(DeckValidator.validate(overLimit, rules: rules).namesOK)
+    }
+
+    /// 沒有例外規則的卡照舊是標準 4 張上限
+    func testNameLimitDefaultsToStandardWithoutException() {
+        let card = makeCard(id: "T/X01-001", name: "普通卡")
+        XCTAssertEqual(DeckValidator.nameLimit(for: card, rules: .standard), 4)
+    }
 }
 
 // MARK: - 匯入解析（§4.4.5）

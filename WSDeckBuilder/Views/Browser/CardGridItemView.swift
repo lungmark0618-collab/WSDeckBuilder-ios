@@ -14,6 +14,7 @@ struct CardGridItemView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(OnboardingCoordinator.self) private var onboarding
+    @Environment(DeckBuildingRulesService.self) private var deckRules
     @Query private var collection: [CollectionEntry]
 
     private var ownedCount: Int {
@@ -31,7 +32,8 @@ struct CardGridItemView: View {
 
     /// 超量標紅一律看同卡跨刷版總數
     private var isOverLimit: Bool {
-        (deck?.count(of: card) ?? 0) > DeckValidator.nameLimit
+        guard let limit = DeckValidator.nameLimit(for: card, rules: deckRules.rules) else { return false }
+        return (deck?.count(of: card) ?? 0) > limit
     }
 
     var body: some View {

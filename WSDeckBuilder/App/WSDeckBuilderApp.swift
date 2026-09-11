@@ -12,6 +12,7 @@ struct WSDeckBuilderApp: App {
     @State private var deckImport = DeckImportCoordinator()
     @State private var wsNews = WSNewsService()
     @State private var waveNames = WaveNameService()
+    @State private var deckRules = DeckBuildingRulesService()
     @State private var pinnedDecks = PinnedDecksStore()
     @State private var newsCategoryFilter = NewsCategoryFilterStore()
     @State private var aiChat = AIChatCoordinator()
@@ -32,6 +33,7 @@ struct WSDeckBuilderApp: App {
                 .environment(deckImport)
                 .environment(wsNews)
                 .environment(waveNames)
+                .environment(deckRules)
                 .environment(pinnedDecks)
                 .environment(newsCategoryFilter)
                 .environment(aiChat)
@@ -45,6 +47,8 @@ struct WSDeckBuilderApp: App {
                     if await waveNames.refresh() {
                         database.applyWaveNameOverrides(waveNames.labels)
                     }
+                    // 組牌限制例外表（同名可超過4張、複數卡名合計限制）同一套背景查新版
+                    await deckRules.refresh()
                 }
                 .onOpenURL { url in
                     deckImport.handle(url: url)
@@ -62,10 +66,12 @@ struct WSDeckBuilderApp: App {
     }
 
     private func checkForUpdates() async {
+        async let newsRefresh: Void = wsNews.refresh(force: false)
         await updater.checkSilently(against: database)
         if case .updateAvailable(let pending) = updater.state {
             announcements.noteDataUpdates(pending)
         }
         await announcements.checkSilently()
+        await newsRefresh
     }
 }

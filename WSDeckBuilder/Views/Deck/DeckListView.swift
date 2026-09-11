@@ -11,6 +11,7 @@ struct DeckListView: View {
     @Environment(CardDatabase.self) private var database
     @Environment(OnboardingCoordinator.self) private var onboarding
     @Environment(PinnedDecksStore.self) private var pinnedDecks
+    @Environment(DeckBuildingRulesService.self) private var deckRules
     @Query(sort: \Deck.createdAt) private var decks: [Deck]
     @AppStorage("activeDeckUUID") private var activeDeckUUID: String = ""
 
@@ -193,7 +194,7 @@ struct DeckListView: View {
                 Button("取消", role: .cancel) {}
                 Button("建立") { addDeck(named: createName) }
             } message: {
-                Text("建立後到「圖鑑」分頁選擇此牌組即可加卡，所有變更都會自動儲存")
+                Text("建立後打開牌組，點「加入卡片」即可選牌，所有變更都會自動儲存")
             }
             .overlay {
                 if decks.isEmpty {
@@ -203,7 +204,7 @@ struct DeckListView: View {
                             .foregroundStyle(Color.accentColor)
                         Text("還沒有牌組")
                             .font(.title3.bold())
-                        Text("先建立一副牌組，再到圖鑑挑選卡片。")
+                        Text("先建立一副牌組，再點「加入卡片」挑選。")
                             .font(.subheadline)
                             .foregroundStyle(surface.secondaryText)
                         Button {
@@ -241,7 +242,7 @@ struct DeckListView: View {
             database.card(forPrinting: entry.printingID)
                 .map { DeckValidator.CountedCard(card: $0, count: entry.count) }
         }
-        let result = DeckValidator.validate(items)
+        let result = DeckValidator.validate(items, rules: deckRules.rules)
         let cover = deck.coverPrinting(database: database)
         let isActive = deck.uuid.uuidString == activeDeckUUID
 

@@ -118,6 +118,7 @@ struct CardDetailContent: View {
     @Environment(CardDatabase.self) private var database
     @Environment(AppearanceSettings.self) private var appearance
     @Environment(\.modelContext) private var context
+    @Environment(DeckBuildingRulesService.self) private var deckRules
     @State private var selectedPrintingID: String = ""
 
     private var selectedPrinting: Printing {
@@ -315,9 +316,10 @@ struct CardDetailContent: View {
             }
             let total = deck.count(of: card)
             if total > 0 {
-                Text("合計 \(total) / \(DeckValidator.nameLimit) 上限")
+                let limit = DeckValidator.nameLimit(for: card, rules: deckRules.rules)
+                Text(limit.map { "合計 \(total) / \($0) 上限" } ?? "合計 \(total)（同名無上限）")
                     .font(.caption)
-                    .foregroundStyle(total > DeckValidator.nameLimit ? .red : .secondary)
+                    .foregroundStyle(limit.map { total > $0 } ?? false ? .red : .secondary)
             }
         }
         .padding(Spacing.s12)

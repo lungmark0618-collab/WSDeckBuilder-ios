@@ -18,13 +18,13 @@ enum CatalogRoute: Hashable {
 struct CardCatalogView: View {
     @Environment(\.appSurface) private var surface
     let route: CatalogRoute
+    let editingDeckUUID: UUID?
 
     @Environment(CardDatabase.self) private var database
     @Environment(AppearanceSettings.self) private var appearance
     @Environment(OnboardingCoordinator.self) private var onboarding
     @Query(sort: \Deck.createdAt) private var decks: [Deck]
     @Query private var collection: [CollectionEntry]
-    @AppStorage("activeDeckUUID") private var activeDeckUUID: String = ""
     @AppStorage("browserUsesGrid") private var usesGrid = true
     /// 「探索作品」畫面的排序方式，等級／顏色這些卡片層級條件對選作品沒有
     /// 意義，改用獨立的排序選單取代舊的篩選面板（見 catalogToolbar）
@@ -41,8 +41,9 @@ struct CardCatalogView: View {
     /// 那等於每個畫格更新都全表掃一次 3000 多張卡。
     @State private var results: [Card] = []
 
-    init(route: CatalogRoute) {
+    init(route: CatalogRoute, editingDeckUUID: UUID? = nil) {
         self.route = route
+        self.editingDeckUUID = editingDeckUUID
         var initial = SearchQuery()
         if case .title(let code) = route { initial.titleCode = code }
         _query = State(initialValue: initial)
@@ -72,7 +73,7 @@ struct CardCatalogView: View {
     }
 
     private var activeDeck: Deck? {
-        decks.first { $0.uuid.uuidString == activeDeckUUID }
+        decks.first { $0.uuid == editingDeckUUID }
     }
 
     private func recomputeResults() {
@@ -185,16 +186,27 @@ struct CardCatalogView: View {
 
     @ViewBuilder
     private var topBar: some View {
-        // 作品選單上沒有卡可以加，這排東西只會擋掉版面
-        if !showsGallery {
-            VStack(spacing: 0) {
-                ActiveDeckPicker(decks: decks, activeDeckUUID: $activeDeckUUID)
-                activeFilterBar
-                suggestionBar
-                if let activeDeck {
-                    ActiveDeckStripView(deck: activeDeck) { showDeckQuickView = true }
+        VStack(spacing: 0) {
+            if let activeDeck {
+                HStack {
+                    Label("加入「\(activeDeck.name)」", systemImage: "rectangle.stack.badge.plus")
+                        .font(.subheadline.weight(.semibold)).lineLimit(2)
+                    Spacer()
+                    Text("\(activeDeck.totalCount) 張").font(.caption.monospacedDigit())
+                }
+                .padding(.horizontal).padding(.vertical, 10)
+                .background(surface.panel)
+            }
+            if !showsGallery {
+                VStack(spacing: 0) {
+                    activeFilterBar
+                    suggestionBar
+                    if let activeDeck {
+                        ActiveDeckStripView(deck: activeDeck) { showDeckQuickView = true }
+                    }
                 }
             }
+
         }
     }
 
@@ -203,7 +215,7 @@ struct CardCatalogView: View {
     // this expression in reasonable time"），拆開讓編譯器分開推斷才過得了
     @ToolbarContentBuilder
     private var catalogToolbar: some ToolbarContent {
-        if route == .root {
+        if route == .root && editingDeckUUID == nil {
             ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
         }
         ToolbarItemGroup(placement: .topBarTrailing) {

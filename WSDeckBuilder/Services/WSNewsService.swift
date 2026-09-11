@@ -73,38 +73,56 @@ final class WSNewsService {
     private(set) var isLoading = false
     private(set) var lastCheckedAt: Date?
     private(set) var errorMessage: String?
+    private var lastAttemptAt: Date?
+    private let session: URLSession
+    private let cacheFile: URL
 
     private static let url = URL(string:
         "https://raw.githubusercontent.com/lungmark0618-collab/WSDeckBuilder-data/main/ws_news.json")!
-    private static var cacheFile: URL {
+    private static var defaultCacheFile: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ws_news_cache.json")
     }
 
-    init() {
+    init(session: URLSession = .shared, cacheFile: URL? = nil) {
+        self.session = session
+        self.cacheFile = cacheFile ?? Self.defaultCacheFile
         loadCache()
     }
 
     private func loadCache() {
-        guard let data = try? Data(contentsOf: Self.cacheFile),
+        guard let data = try? Data(contentsOf: cacheFile),
               let decoded = try? JSONDecoder().decode([WSNewsItem].self, from: data) else { return }
         items = decoded
+        lastCheckedAt = (try? FileManager.default.attributesOfItem(atPath: cacheFile.path))?[.modificationDate] as? Date
     }
 
-    func refresh() async {
+    func refresh(force: Bool = true) async {
         guard !isLoading else { return }
+        if !force {
+            if let lastCheckedAt, !items.isEmpty, (0..<(15 * 60)).contains(Date().timeIntervalSince(lastCheckedAt)) { return }
+            if let lastAttemptAt, Date().timeIntervalSince(lastAttemptAt) < 60 { return }
+        }
+        lastAttemptAt = .now
         isLoading = true
         defer { isLoading = false }
         do {
-            var request = URLRequest(url: Self.url)
+            var request = URLRequest(url: Self.url, timeoutInterval: 25)
             request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
-            let (data, _) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw URLError(.badServerResponse)
+            }
             let decoded = try JSONDecoder().decode(Feed.self, from: data)
+            guard !decoded.items.isEmpty else { throw URLError(.cannotParseResponse) }
             items = decoded.items
             errorMessage = nil
             lastCheckedAt = .now
-            try? JSONEncoder().encode(decoded.items).write(to: Self.cacheFile)
+            try? JSONEncoder().encode(decoded.items).write(to: cacheFile, options: .atomic)
+        } catch is CancellationError {
+            lastAttemptAt = nil
         } catch {
+            if (error as? URLError)?.code == .cancelled { lastAttemptAt = nil; return }
             // 抓不到就沿用快取，不拿錯誤訊息打斷使用者——首頁的公告不是關鍵功能
             errorMessage = "抓不到最新公告，顯示的是上次快取的內容。"
         }

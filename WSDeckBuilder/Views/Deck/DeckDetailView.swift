@@ -6,9 +6,12 @@ struct DeckDetailView: View {
     @Environment(\.appSurface) private var surface
     @Bindable var deck: Deck
     @Environment(CardDatabase.self) private var database
+    @Environment(DeckBuildingRulesService.self) private var deckRules
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
 
+    @State private var showAddCards = false
+    @AppStorage("activeDeckUUID") private var activeDeckUUID = ""
     @State private var mode: Mode = .cards
     @State private var detailCard: Card?
     @State private var isEditing = false
@@ -52,12 +55,22 @@ struct DeckDetailView: View {
     }
 
     private var validation: DeckValidator.Result {
-        DeckValidator.validate(countedItems)
+        DeckValidator.validate(countedItems, rules: deckRules.rules)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             validationHeader
+            Button {
+                activeDeckUUID = deck.uuid.uuidString
+                showAddCards = true
+            } label: {
+                Label("加入卡片", systemImage: "plus")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.tonal)
+            .padding(.horizontal).padding(.vertical, Spacing.s8)
+            .onboardingAnchor(.addToDeck)
             Picker("模式", selection: $mode) {
                 ForEach(Mode.allCases, id: \.self) { Text($0.rawValue) }
             }
@@ -111,6 +124,9 @@ struct DeckDetailView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showAddCards) {
+            DeckCardPickerView(deckUUID: deck.uuid)
         }
         .sheet(item: $detailCard) { card in
             // 依畫面上的分區順序帶入，滑動順序才跟看到的一致
@@ -244,7 +260,7 @@ struct DeckDetailView: View {
             if deck.entries.isEmpty {
                 ContentUnavailableView("牌組是空的",
                                        systemImage: "rectangle.stack.badge.plus",
-                                       description: Text("到「圖鑑」分頁選擇此牌組後按＋加卡"))
+                                       description: Text("點上方「加入卡片」，為這副牌組挑選卡片"))
             }
         }
     }
@@ -304,7 +320,7 @@ struct DeckDetailView: View {
             if deck.entries.isEmpty {
                 ContentUnavailableView("牌組是空的",
                                        systemImage: "rectangle.stack.badge.plus",
-                                       description: Text("到「圖鑑」分頁選擇此牌組後按＋加卡"))
+                                       description: Text("點上方「加入卡片」，為這副牌組挑選卡片"))
             }
         }
     }

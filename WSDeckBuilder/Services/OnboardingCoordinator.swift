@@ -44,7 +44,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .createDeck: "點右上角的＋，建立你的第一副牌組。"
         case .pinDecks: "在牌組上向右滑，點「釘選到首頁」，常用的牌組就會出現在首頁最上方，不用每次都切分頁找。"
         case .viewCard: "回到圖鑑，點一部作品、再點一張卡，看看完整能力文字翻譯。"
-        case .addToDeck: "在卡片上點「＋」，把它加進剛剛建立的牌組。"
+        case .addToDeck: "打開剛建立的牌組，點「加入卡片」，再在卡片上按「＋」。圖鑑只用來查牌。"
         case .appearance: "點「外觀」，字級、背景、強調色都能依你喜好調整。"
         }
     }
@@ -54,8 +54,8 @@ enum OnboardingStep: Int, CaseIterable {
         switch self {
         case .welcome: nil
         case .homeIntro: .home
-        case .search, .filter, .notifications, .viewCard, .addToDeck: .catalog
-        case .createDeck, .pinDecks: .deck
+        case .search, .filter, .notifications, .viewCard: .catalog
+        case .createDeck, .pinDecks, .addToDeck: .deck
         case .appearance: .settings
         }
     }

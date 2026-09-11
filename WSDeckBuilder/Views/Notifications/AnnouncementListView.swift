@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// 鈴鐺點開後的通知列表。開場即視為已讀——跟大多數通知中心一樣，
-/// 「看過列表」就算已讀，不用逐則點開才算數。
+/// 鈴鐺通知列表，點選單則標為已讀，也可明確選擇全部已讀。
 struct AnnouncementListView: View {
     @Environment(AnnouncementCenter.self) private var center
     @Environment(\.dismiss) private var dismiss
@@ -27,12 +26,26 @@ struct AnnouncementListView: View {
                     }
                 }
             }
+            .refreshable { await center.check() }
+            .safeAreaInset(edge: .bottom) {
+                if let error = center.errorMessage {
+                    Text(error).font(.footnote).foregroundStyle(.secondary).padding()
+                }
+            }
             .navigationTitle("通知")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("全部刪除", role: .destructive) { confirmDeleteAll = true }
-                        .disabled(center.items.isEmpty)
+                    Menu {
+                        Button("全部標為已讀") { center.markAllRead() }
+                            .disabled(center.unreadCount == 0)
+                        Button("全部刪除", role: .destructive) { confirmDeleteAll = true }
+                            .disabled(center.items.isEmpty)
+                    } label: { Image(systemName: "ellipsis.circle") }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { Task { await center.check() } } label: { Image(systemName: "arrow.clockwise") }
+                        .disabled(center.isLoading).accessibilityLabel("重新整理通知")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
@@ -47,7 +60,7 @@ struct AnnouncementListView: View {
                 Text("目前看到的通知都會消失，之後也不會再出現。")
             }
         }
-        .onAppear { center.markAllRead() }
+        .task { await center.checkSilently() }
         .swipeToGoBack()
     }
 
@@ -64,5 +77,9 @@ struct AnnouncementListView: View {
             }
         }
         .padding(.vertical, Spacing.s4)
+        .contentShape(Rectangle())
+        .onTapGesture { center.markRead(item) }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(center.isUnread(item) ? "點兩下標為已讀" : "已讀")
     }
 }

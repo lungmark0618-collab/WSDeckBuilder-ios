@@ -39,6 +39,10 @@ enum NotificationBadgeStyle: String, CaseIterable, Identifiable {
 @MainActor
 final class AnnouncementCenter {
     static let supportedSchemaVersion = 1
+    private(set) var isLoading = false
+    private(set) var errorMessage: String?
+    private var lastAttemptAt: Date?
+    private let defaults: UserDefaults
 
     /// 跟卡表 manifest 同一個 repo，理由一樣：raw 走 CDN、約快取 5 分鐘。
     static let feedURL = URL(string: "https://raw.githubusercontent.com"
@@ -51,28 +55,29 @@ final class AnnouncementCenter {
 
     /// 兩邊合併、按日期排序、濾掉使用者刪過的，畫面只認這個，不分來源
     var items: [Announcement] {
-        (serverItems + localItems)
-            .filter { !deletedIDs.contains($0.id) }
-            .sorted { $0.date > $1.date }
+        var seen = Set<String>()
+        return (serverItems + localItems)
+            .filter { !deletedIDs.contains($0.id) && seen.insert($0.id).inserted }
+            .sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
     }
 
     var badgeStyle: NotificationBadgeStyle {
-        didSet { UserDefaults.standard.set(badgeStyle.rawValue, forKey: Self.badgeStyleKey) }
+        didSet { defaults.set(badgeStyle.rawValue, forKey: Self.badgeStyleKey) }
     }
 
     private var readIDs: Set<String> {
-        didSet { UserDefaults.standard.set(Array(readIDs), forKey: Self.readIDsKey) }
+        didSet { defaults.set(Array(readIDs), forKey: Self.readIDsKey) }
     }
 
     /// 使用者手動刪除過的通知——不管伺服器端或本機合成的通知，刪掉就是
     /// 從列表消失，就算之後重新查一次公告 feed 也不會再冒出來
     private var deletedIDs: Set<String> {
-        didSet { UserDefaults.standard.set(Array(deletedIDs), forKey: Self.deletedIDsKey) }
+        didSet { defaults.set(Array(deletedIDs), forKey: Self.deletedIDsKey) }
     }
 
     var lastCheckedAt: Date? {
         didSet {
-            UserDefaults.standard.set(lastCheckedAt?.timeIntervalSince1970,
+            defaults.set(lastCheckedAt?.timeIntervalSince1970,
                                       forKey: Self.checkedKey)
         }
     }
@@ -86,8 +91,8 @@ final class AnnouncementCenter {
     private static let cacheKey = "announcement.cachedItems"
     private static let localItemsKey = "announcement.localItems"
 
-    init() {
-        let defaults = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         readIDs = Set(defaults.stringArray(forKey: Self.readIDsKey) ?? [])
         deletedIDs = Set(defaults.stringArray(forKey: Self.deletedIDsKey) ?? [])
         badgeStyle = NotificationBadgeStyle(rawValue: defaults.string(forKey: Self.badgeStyleKey) ?? "")
@@ -101,11 +106,25 @@ final class AnnouncementCenter {
         }
         if let cached = defaults.data(forKey: Self.localItemsKey),
            let decoded = try? JSONDecoder().decode([Announcement].self, from: cached) {
-            localItems = decoded
+            localItems = Self.compactLocalItems(decoded)
         }
     }
 
+    static func compactLocalItems(_ items: [Announcement]) -> [Announcement] {
+        var latest: [String: Announcement] = [:]
+        for item in items {
+            let split = item.id.lastIndex(of: "-")
+            let version = split.flatMap { Int(item.id[item.id.index(after: $0)...]) } ?? 0
+            let key = item.id.hasPrefix("data-update-") && split != nil ? String(item.id[..<split!]) : item.id
+            let oldVersion = latest[key]?.id.split(separator: "-").last.flatMap { Int($0) } ?? -1
+            if version >= oldVersion { latest[key] = item }
+        }
+        return latest.values.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
+    }
+
     func isUnread(_ item: Announcement) -> Bool { !readIDs.contains(item.id) }
+
+    func markRead(_ item: Announcement) { readIDs.insert(item.id) }
 
     func markAllRead() {
         readIDs.formUnion(items.map(\.id))
@@ -127,30 +146,39 @@ final class AnnouncementCenter {
 
     // MARK: - 查詢
 
-    /// 啟動時靜默呼叫，一天查一次，查不到就沿用快取（跟 DataUpdater.checkSilently 同款）
+    /// 啟動或開啟列表時檢查，成功後 15 分鐘內沿用快取。
     func checkSilently() async {
-        if let last = lastCheckedAt, Date().timeIntervalSince(last) < 86_400 { return }
+        if let last = lastCheckedAt, (0..<900).contains(Date().timeIntervalSince(last)) { return }
+        if let lastAttemptAt, Date().timeIntervalSince(lastAttemptAt) < 60 { return }
         guard NetworkPolicy.shared.allowsAutomaticDownload else { return }
         await check()
     }
 
     func check() async {
+        guard !isLoading else { return }
+        isLoading = true
+        lastAttemptAt = .now
+        defer { isLoading = false }
         do {
-            var request = URLRequest(url: Self.feedURL)
+            var request = URLRequest(url: Self.feedURL, timeoutInterval: 25)
             request.cachePolicy = .reloadIgnoringLocalCacheData
             let (data, response) = try await URLSession.shared.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                return
+                throw URLError(.badServerResponse)
             }
             let feed = try JSONDecoder().decode(AnnouncementFeed.self, from: data)
-            guard feed.schemaVersion <= Self.supportedSchemaVersion else { return }
+            guard (1...Self.supportedSchemaVersion).contains(feed.schemaVersion) else {
+                throw URLError(.cannotParseResponse)
+            }
             serverItems = feed.items.sorted { $0.date > $1.date }
             lastCheckedAt = Date()
+            errorMessage = nil
             if let encoded = try? JSONEncoder().encode(serverItems) {
-                UserDefaults.standard.set(encoded, forKey: Self.cacheKey)
+                defaults.set(encoded, forKey: Self.cacheKey)
             }
         } catch {
-            // 靜默失敗，沿用快取內容——通知不值得為了查不到而跳錯誤打擾使用者
+            if Task.isCancelled { lastAttemptAt = nil; return }
+            errorMessage = "暫時無法更新通知，保留上次內容。"
         }
     }
 
@@ -165,20 +193,21 @@ final class AnnouncementCenter {
             let id = "data-update-\(item.titleCode)-\(item.toVersion)"
             guard !localItems.contains(where: { $0.id == id }) else { continue }
             let isNewTitle = item.fromVersion == 0
+            // 同系列只保留最新一則待下載提醒，避免逐版累積。
             localItems.append(Announcement(
                 id: id,
                 date: Self.dateFormatter.string(from: .now),
-                title: isNewTitle ? "新增了「\(item.titleName)」" : "「\(item.titleName)」卡表已更新",
+                title: isNewTitle ? "「\(item.titleName)」新系列卡表可下載" : "「\(item.titleName)」有卡表更新",
                 body: isNewTitle
-                    ? "可以在圖鑑分頁看到這部新收錄的作品。"
+                    ? "新系列卡表已上線。請到設定檢查並下載卡表，安裝後即可在圖鑑查看。"
                     : "有新的翻譯或卡片內容，到設定頁按「檢查更新」即可下載。"
             ))
             didAdd = true
         }
         guard didAdd else { return }
-        localItems.sort { $0.date > $1.date }
+        localItems = Self.compactLocalItems(localItems)
         if let encoded = try? JSONEncoder().encode(localItems) {
-            UserDefaults.standard.set(encoded, forKey: Self.localItemsKey)
+            defaults.set(encoded, forKey: Self.localItemsKey)
         }
     }
 

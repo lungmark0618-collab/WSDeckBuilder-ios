@@ -12,7 +12,11 @@ struct DeckEntryRowView: View {
     var onTap: () -> Void
 
     @Environment(\.modelContext) private var context
-    private var overLimit: Bool { totalForName > DeckValidator.nameLimit }
+    @Environment(DeckBuildingRulesService.self) private var deckRules
+    private var overLimit: Bool {
+        guard let limit = DeckValidator.nameLimit(for: card, rules: deckRules.rules) else { return false }
+        return totalForName > limit
+    }
     private var cardTotal: Int { deck.count(of: card) }
 
     /// 未展開時的小標籤，如 RR×2 SR×1
