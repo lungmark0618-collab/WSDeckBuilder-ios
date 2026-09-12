@@ -132,7 +132,9 @@ private struct AIChatBubble: View {
                 if message.isLoading {
                     ProgressView().controlSize(.small)
                 } else {
-                    Text(message.text)
+                    // AI 回答常帶 **粗體** 這類 Markdown 語法，純文字顯示會看到
+                    // 一堆星號、像是壞掉——解析成 AttributedString 才會是真的粗體
+                    Text(Self.attributedText(message.text))
                         .font(.callout)
                         .multilineTextAlignment(.leading)
                 }
@@ -146,5 +148,12 @@ private struct AIChatBubble: View {
             .foregroundStyle(message.role == .user ? .white : .primary)
             if message.role == .assistant { Spacer(minLength: 40) }
         }
+    }
+
+    /// 解析失敗（極少見的畸形語法）就退回純文字，不要整個訊息顯示不出來
+    private static func attributedText(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
     }
 }
