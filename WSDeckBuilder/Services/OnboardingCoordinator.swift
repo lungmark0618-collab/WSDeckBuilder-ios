@@ -41,7 +41,7 @@ enum OnboardingStep: Int, CaseIterable {
         case .search: "在上面的搜尋列輸入卡號、卡名或能力文字，試著打「hololive」看看。"
         case .filter: "點右上角，可以依卡片數、由新到舊、或筆劃排序作品清單。"
         case .notifications: "開發者的公告和卡表更新，都會在這裡提醒你。"
-        case .createDeck: "點右上角的＋，建立你的第一副牌組。"
+        case .createDeck: "點「建立」按鈕，建立你的第一副牌組。"
         case .pinDecks: "在牌組上向右滑，點「釘選到首頁」，常用的牌組就會出現在首頁最上方，不用每次都切分頁找。"
         case .viewCard: "回到圖鑑，點一部作品、再點一張卡，看看完整能力文字翻譯。"
         case .addToDeck: "打開剛建立的牌組，點「加入卡片」，再在卡片上按「＋」。圖鑑只用來查牌。"

@@ -48,6 +48,7 @@ struct DeckListView: View {
                                 Label("建立", systemImage: "plus")
                             }
                             .buttonStyle(.filled)
+                            .onboardingAnchor(.createDeck)
                         }
                         Label("向右滑釘選到首頁，向左滑管理牌組", systemImage: "hand.draw")
                             .font(.caption).foregroundStyle(.secondary)
@@ -126,43 +127,6 @@ struct DeckListView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
-                ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        createName = "新牌組 \(decks.count + 1)"
-                        showCreateAlert = true
-                    } label: {
-                        Label("新增空牌組", systemImage: "plus")
-                    }
-                    Divider()
-                    Button {
-                        showQRScanner = true
-                    } label: {
-                        Label("開啟相機掃描", systemImage: "camera.viewfinder")
-                    }
-                    // PhotosPicker 直接放在 Menu 裡按了不會彈出，
-                    // 要由選單設旗標、picker 掛在畫面上才會出現
-                    Button {
-                        showPhotoPicker = true
-                    } label: {
-                        Label("掃牌組圖片匯入", systemImage: "qrcode.viewfinder")
-                    }
-                    Button {
-                        showFileImporter = true
-                    } label: {
-                        Label("從檔案匯入", systemImage: "folder")
-                    }
-                    Button {
-                        pastedText = ""
-                        showPasteSheet = true
-                    } label: {
-                        Label("貼上牌表文字匯入", systemImage: "doc.on.clipboard")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .onboardingAnchor(.createDeck)
-                }
             }
             .fileImporter(isPresented: $showFileImporter,
                           allowedContentTypes: [.json, .plainText, .text]) { result in
@@ -214,6 +178,7 @@ struct DeckListView: View {
                             Label("建立第一副牌組", systemImage: "plus")
                         }
                         .buttonStyle(.filled)
+                        .onboardingAnchor(.createDeck)
                         Button("掃描 QR Code 匯入") { showQRScanner = true }
                             .buttonStyle(.tonal)
                     }

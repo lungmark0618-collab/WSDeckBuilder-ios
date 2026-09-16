@@ -33,7 +33,7 @@ struct HomeView: View {
                             }
                         }
                         if !heroItems.isEmpty {
-                            HeroCarousel(items: heroItems) { selectedItem = $0 }
+                            HeroCarousel(items: heroItems, isEnabled: selectedItem == nil && selectedDeck == nil && !showingCategoryFilter) { selectedItem = $0 }
                         }
                     }
                     VStack(alignment: .leading, spacing: Spacing.s12) {
@@ -91,7 +91,7 @@ struct HomeView: View {
                         prompt: "搜尋最新動態")
             .refreshable { await news.refresh() }
             .task {
-                if news.items.isEmpty { await news.refresh() }
+                await news.refresh(force: false)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
@@ -150,7 +150,7 @@ struct HomeView: View {
 
     private var heroItems: [WSNewsItem] {
         filteredItems
-            .filter { $0.imageURL != nil && $0.categories.contains(where: { $0 == "商品情報" || $0 == "カードリスト" }) }
+            .filter { $0.imageURL != nil && $0.categories.contains("商品情報") }
             .prefix(6)
             .map { $0 }
     }
@@ -273,8 +273,19 @@ private struct PinnedDeckCard: View {
 private struct HeroCarousel: View {
     @Environment(\.appSurface) private var surface
     let items: [WSNewsItem]
+    var isEnabled = true
     let onSelect: (WSNewsItem) -> Void
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var isDragging = false
+    @State private var progress: CGFloat = 0
     @State private var index = 0
+
+    private struct PlaybackKey: Equatable {
+        let index: Int
+        let active: Bool
+        let itemIDs: [String]
+    }
     @ScaledMetric(relativeTo: .title3) private var captionHeight = 144
 
     var body: some View {
@@ -286,17 +297,49 @@ private struct HeroCarousel: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: 220 + captionHeight)
+            .simultaneousGesture(DragGesture(minimumDistance: 4).updating($isDragging) { _, dragging, _ in
+                dragging = true
+            })
             if items.count > 1 {
                 HStack(spacing: 6) {
                     ForEach(items.indices, id: \.self) { i in
                         Capsule()
-                            .fill(i == index ? Color.primary : Color.primary.opacity(0.28))
-                            .frame(width: i == index ? 16 : 6, height: 6)
+                            .fill(Color.primary.opacity(0.20))
+                            .overlay(alignment: .leading) {
+                                if i == index {
+                                    Rectangle().fill(Color.primary)
+                                        .frame(width: 28 * progress)
+                                }
+                            }
+                            .frame(width: i == index ? 28 : 6, height: 6)
+                            .clipShape(Capsule())
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("第 \(index + 1) 張，共 \(items.count) 張")
             }
         }
         .onChange(of: items.map(\.id)) { _, _ in index = 0 }
+        .task(id: PlaybackKey(index: index,
+                              active: isEnabled && scenePhase == .active && !isDragging,
+                              itemIDs: items.map(\.id))) {
+            progress = 0
+            guard isEnabled, scenePhase == .active, !isDragging, items.count > 1 else { return }
+            let clock = ContinuousClock()
+            let start = clock.now
+            do {
+                while progress < 1 {
+                    try await Task.sleep(for: .milliseconds(30))
+                    try Task.checkCancellation()
+                    let elapsed = start.duration(to: clock.now).components
+                    let seconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
+                    progress = min(1, CGFloat(seconds / 6))
+                }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.35)) {
+                    index = (index + 1) % items.count
+                }
+            } catch { /* 離頁、切到背景或手動滑動時取消，重新進場再計時。 */ }
+        }
     }
 }
 
@@ -314,7 +357,7 @@ private struct HeroSlide: View {
             Button(action: onTap) {
                 HStack(spacing: Spacing.s16) {
                     VStack(alignment: .leading, spacing: Spacing.s8) {
-                        Text(item.categories.first.map(NewsCategory.labelZH) ?? "商品資訊")
+                        Text("商品資訊")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(.secondary)
                         Text(item.displayTitle)

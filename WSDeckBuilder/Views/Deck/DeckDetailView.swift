@@ -29,6 +29,8 @@ struct DeckDetailView: View {
     @State private var showCollected = false
     /// 分享是高頻操作，獨立成底部工具列按鈕，不用再點進「⋯」選單（§ PRD 分享按鈕）
     @State private var showShareOptions = false
+    @State private var pendingShare: ShareAction?
+    private enum ShareAction { case qr, image }
     /// 卡表的顯示方式（與圖鑑分頁各自記憶）
     @AppStorage("deckUsesGrid") private var usesGrid = true
     /// 出好的牌組圖片；有值就跳分享面板
@@ -141,10 +143,77 @@ struct DeckDetailView: View {
         .sheet(isPresented: $showQRPresent) {
             DeckQRPresentView(deck: deck)
         }
-        .confirmationDialog("分享", isPresented: $showShareOptions, titleVisibility: .visible) {
-            Button("生成 QR Code") { showQRPresent = true }
-            Button("匯出牌組圖片（可掃回）") { Task { await makeDeckImage() } }
+        .sheet(isPresented: $showShareOptions, onDismiss: {
+            let action = pendingShare
+            pendingShare = nil
+            switch action {
+            case .qr: showQRPresent = true
+            case .image: Task { await makeDeckImage() }
+            case nil: break
+            }
+        }) {
+            shareOptionsSheet
         }
+    }
+
+    private var shareOptionsSheet: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("分享牌組").font(.title2.bold())
+                        Text(deck.name).font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button { showShareOptions = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                            .background(Color.primary.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("關閉分享選單")
+                }
+                VStack(spacing: 12) {
+                    shareOption("出示 QR Code", detail: "讓對方掃描，直接匯入牌組", symbol: "qrcode", action: .qr)
+                    shareOption("匯出牌組圖片", detail: "分享完整牌表，圖片內含可匯入的 QR Code", symbol: "photo", action: .image)
+                }
+            }
+            .padding(24)
+            .padding(.top, 8)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(28)
+        .presentationBackground(Color(.systemBackground))
+    }
+
+    private func shareOption(_ title: String, detail: String, symbol: String, action: ShareAction) -> some View {
+        Button {
+            pendingShare = action
+            showShareOptions = false
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: symbol)
+                    .font(.system(size: 24, weight: .medium))
+                    .frame(width: 48, height: 48)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title).font(.headline)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .foregroundStyle(.primary)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+            .contentShape(RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 規則驗證列（§4.4.3）
