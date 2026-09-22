@@ -322,8 +322,11 @@ final class CardDatabase {
 
     func titleCode(of card: Card) -> String? { titleByCardID[card.id] }
 
+    /// 卡表的 meta 本來就帶著每部作品的張數，直接查表就好——這裡以前是掃過
+    /// `titleByCardID` 全部卡片再數有幾張符合，`suggestions(for:)` 每個候選
+    /// 作品都會呼叫一次，卡表夠大時同一次打字就會疊出好幾輪全表掃描
     func cardCount(inTitle code: String) -> Int {
-        titleByCardID.values.lazy.filter { $0 == code }.count
+        sets.first(where: { $0.titleCode == code })?.cardCount ?? 0
     }
 
     /// id 有沒有拆過彈：拆過的作品，篩選/收藏/導覽用的 id 是商品代碼而不是
