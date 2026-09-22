@@ -46,6 +46,11 @@ final class CardDatabase {
     private var waveNameOverrides: [String: String] = [:]
     /// 全部特徵（供 FilterSheet 列舉）
     private(set) var allTraits: [String] = []
+    /// titleCode → 該作品最新一波的商品代碼數字，供「探索作品」畫面「由新到舊」
+    /// 排序用。啟動時算好一次，不然每次排序都要整份卡表掃一輪——資料量還小
+    /// （幾千張）時不明顯，卡表膨脹到三萬多張後，排序時對每個作品各掃一次
+    /// 全部卡片會把主執行緒卡到被系統判定沒回應而關掉
+    private var newestSetNumberByTitleCode: [String: Int] = [:]
 
     /// 解碼與建索引的產物。全部是值型別，可以在背景執行緒算完再整包交給主執行緒。
     private struct Snapshot {
@@ -58,6 +63,7 @@ final class CardDatabase {
         var relationIndex: [String: [CardRelation]] = [:]
         var productCodes: Set<String> = []
         var allTraits: [String] = []
+        var newestSetNumberByTitleCode: [String: Int] = [:]
     }
 
     /// 六百多萬位元組的 JSON 在主執行緒解會卡住畫面數秒，丟到背景做。
@@ -105,6 +111,7 @@ final class CardDatabase {
             relationIndex = snapshot.relationIndex
             productCodes = snapshot.productCodes
             allTraits = snapshot.allTraits
+            newestSetNumberByTitleCode = snapshot.newestSetNumberByTitleCode
         case .failure(let message):
             loadError = message
         }
@@ -165,6 +172,13 @@ final class CardDatabase {
         }
         snapshot.allTraits = Array(Set(snapshot.cards.flatMap(\.traitsZH))).sorted()
         snapshot.relationIndex = buildRelations(snapshot.cards)
+        var newestByTitle: [String: Int] = [:]
+        for card in snapshot.cards {
+            guard let titleCode = snapshot.titleByCardID[card.id] else { continue }
+            let number = numericSuffix(card.productCode)
+            if number > (newestByTitle[titleCode] ?? 0) { newestByTitle[titleCode] = number }
+        }
+        snapshot.newestSetNumberByTitleCode = newestByTitle
         (snapshot.browsableSets, snapshot.productCodes) = buildBrowsableSets(
             sets: snapshot.sets, cards: snapshot.cards, titleByCardID: snapshot.titleByCardID,
             waveNameOverrides: waveNameOverrides)
@@ -226,9 +240,8 @@ final class CardDatabase {
         return (result, productCodes)
     }
 
-    /// 商品代碼結尾的數字（如 "SFN/S108" → 108），沒有數字結尾就當 0
-    /// 商品代碼結尾的數字，非 private——「由新到舊」排序（見 newestSetNumber）
-    /// 跟拆彈排序共用同一套規則
+    /// 商品代碼結尾的數字（如 "SFN/S108" → 108），沒有數字結尾就當 0，非 private——
+    /// 「由新到舊」排序（見 newestSetNumber）跟拆彈排序共用同一套規則
     static func numericSuffix(_ code: String) -> Int {
         let digits = code.reversed().prefix(while: \.isNumber)
         return Int(String(digits.reversed())) ?? 0
@@ -236,13 +249,11 @@ final class CardDatabase {
 
     /// 這部作品目前收錄最新一波的商品代碼數字，供「探索作品」畫面「由新到舊」
     /// 排序用。Bushiroad 的彈次編號（如 S108、S136）全系列共用同一個流水號，
-    /// 數字愈大代表愈晚發售，不必額外維護發售日期欄位
+    /// 數字愈大代表愈晚發售，不必額外維護發售日期欄位。查表 O(1)——這裡以前
+    /// 每次呼叫都線性掃過全部卡片找同作品的，卡表膨脹到三萬多張後排序一次
+    /// 就要掃好幾百萬次，主執行緒卡住被系統判定沒回應而關掉（§4.3 圖鑑排序）
     func newestSetNumber(forTitleCode titleCode: String) -> Int {
-        cardsByTitleCode(titleCode).map { Self.numericSuffix($0.productCode) }.max() ?? 0
-    }
-
-    private func cardsByTitleCode(_ titleCode: String) -> [Card] {
-        cards.filter { titleByCardID[$0.id] == titleCode }
+        newestSetNumberByTitleCode[titleCode] ?? 0
     }
 
     private static let chineseOrdinals = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"]
