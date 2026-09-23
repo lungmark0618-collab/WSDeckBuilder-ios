@@ -48,20 +48,25 @@ struct TitleGalleryView: View {
 
     /// 拆很多彈的作品（如 OVERLORD）另外併一張「不分彈」的卡片：只認得卡面、
     /// 不知道自己要找哪一彈的人，可以一次瀏覽整個系列，不用一彈一彈點進去找。
-    /// 排序依 sortOrder 而定，見 TitleSortOrder
-    private var ordered: [BrowsableSet] {
+    /// 排序依 sortOrder 而定，見 TitleSortOrder。快取成 @State 而不是每次
+    /// body 重算的 computed property——捲動時 body 會重複執行好幾次，之前
+    /// 每次都重新分組＋排序，「不分彈」這種現算出來的卡片因此在捲動途中
+    /// 反覆被拆掉重建，標題文字看起來像閃一下消失又出現
+    @State private var ordered: [BrowsableSet] = []
+
+    private func recomputeOrdered() {
         let combined = withCombinedEntries(sets)
         switch sortOrder {
         case .cardCount:
-            return combined.sorted { $0.cardCount > $1.cardCount }
+            ordered = combined.sorted { $0.cardCount > $1.cardCount }
         case .newest:
-            return combined.sorted {
+            ordered = combined.sorted {
                 database.newestSetNumber(forTitleCode: $0.titleCode)
                     > database.newestSetNumber(forTitleCode: $1.titleCode)
             }
         case .stroke:
             let locale = Locale(identifier: "zh-Hant@collation=stroke")
-            return combined.sorted {
+            ordered = combined.sorted {
                 $0.titleNameZH.compare($1.titleNameZH, options: [], range: nil, locale: locale)
                     == .orderedAscending
             }
@@ -123,6 +128,8 @@ struct TitleGalleryView: View {
         .padding(.top, Spacing.s8)
         .scrollContentBackground(.hidden)
         .background(surface.background)
+        .onChange(of: sets, initial: true) { recomputeOrdered() }
+        .onChange(of: sortOrder) { recomputeOrdered() }
     }
 
     /// 篩不到符合的作品名稱時，還是留一條路到「不分作品瀏覽全部卡片」，

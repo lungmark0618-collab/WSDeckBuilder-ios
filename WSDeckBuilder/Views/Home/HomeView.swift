@@ -95,18 +95,20 @@ struct HomeView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { SidebarMenuButton() }
+                // 兩顆各自獨立的 ToolbarItem，不是塞進同一個 HStack——系統的玻璃
+                // 工具列會把同一個 ToolbarItem 裡的內容框進同一個膠囊，通知的未讀
+                // 徽章數字一多就會被膠囊邊界擠變形（圖鑑頁用 ToolbarItemGroup
+                // 就沒這個問題，這裡照同樣的作法拆開）
                 ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: Spacing.s4) {
-                        Button {
-                            showingCategoryFilter = true
-                        } label: {
-                            Image(systemName: categoryFilter.hidden.isEmpty
-                                  ? "line.3.horizontal.decrease.circle"
-                                  : "line.3.horizontal.decrease.circle.fill")
-                        }
-                        NotificationBellButton()
+                    Button {
+                        showingCategoryFilter = true
+                    } label: {
+                        Image(systemName: categoryFilter.hidden.isEmpty
+                              ? "line.3.horizontal.decrease.circle"
+                              : "line.3.horizontal.decrease.circle.fill")
                     }
                 }
+                ToolbarItem(placement: .topBarTrailing) { NotificationBellButton() }
             }
             .sheet(item: $selectedItem) { item in
                 NewsDetailSheet(item: item)
