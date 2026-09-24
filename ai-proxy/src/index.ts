@@ -125,10 +125,20 @@ export default {
     if (!body.question || typeof body.question !== "string") {
       return json({ error: "missing question" }, 400);
     }
+    // 共用密鑰是跟著 App 二進位檔一起出貨的，不是真的秘密（反組譯就找得到）；
+    // 這裡的長度上限單純是擋「密鑰萬一外流，隨便什麼人都能把這支 Worker
+    // 當免費超大 prompt 的 LLM 代理狂打」——不是防真的攻擊者，是防失控用量
+    const MAX_QUESTION_CHARS = 2000;
+    const MAX_HISTORY_TURNS = 20;
+    const MAX_TURN_CHARS = 4000;
+    const MAX_CONTEXT_CHARS = 4000;
+    if (body.question.length > MAX_QUESTION_CHARS) {
+      return json({ error: "question too long" }, 400);
+    }
 
     let system = SYSTEM_PROMPT;
     if (body.cardContext) {
-      system += `\n\n情境卡片資料：\n${body.cardContext}`;
+      system += `\n\n情境卡片資料：\n${body.cardContext.slice(0, MAX_CONTEXT_CHARS)}`;
     }
     const rules = relevantRules(body.question, body.cardContext);
     if (rules) {
@@ -136,9 +146,12 @@ export default {
     }
 
     const messages: { role: string; content: string }[] = [{ role: "system", content: system }];
-    for (const turn of body.history ?? []) {
+    for (const turn of (body.history ?? []).slice(-MAX_HISTORY_TURNS)) {
       if (!turn.text) continue;
-      messages.push({ role: turn.role === "assistant" ? "assistant" : "user", content: turn.text });
+      messages.push({
+        role: turn.role === "assistant" ? "assistant" : "user",
+        content: turn.text.slice(0, MAX_TURN_CHARS),
+      });
     }
     messages.push({ role: "user", content: body.question });
 

@@ -207,7 +207,7 @@ struct SettingsView: View {
                 Button {
                     requestPrefetch(.allPrintings)
                 } label: {
-                    Label("預先下載卡圖（含全部刷版，約 \(allPrintings.count) 張）",
+                    Label("預先下載卡圖（含全部刷版，約 \(allPrintingsCount) 張）",
                           systemImage: "arrow.down.circle.dotted")
                 }
             }
@@ -277,6 +277,13 @@ struct SettingsView: View {
 
     private var allPrintings: [Printing] {
         database.cards.flatMap(\.printings)
+    }
+
+    /// 只要張數顯示在畫面上，別為了一個數字把全部刷版攤平成新陣列——這一區
+    /// 每次畫面重繪（例如切換旁邊其他設定）都會重算，卡表大了之後那個中間
+    /// 陣列一次就要配置好幾萬個元素，純算數量用不到
+    private var allPrintingsCount: Int {
+        database.cards.reduce(0) { $0 + $1.printings.count }
     }
 
     private func printings(for scope: PrefetchScope) -> [Printing] {

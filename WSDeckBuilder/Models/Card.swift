@@ -30,7 +30,13 @@ struct Card: Decodable, Identifiable, Hashable {
     /// 搜尋用的小寫全文。每次比對再 lowercased() 會重複配置整個資料庫的字串
     let searchBlob: String
 
-    var defaultPrinting: Printing { printings[0] }
+    /// 正常情況下 printings 一定非空——發佈前的 check_cards.py 會擋下沒有
+    /// 任何刷版的卡片。但那道檢查在資料管線那一側，client 端不該盲目相信
+    /// 它永遠沒有漏網之魚：萬一真的漏了一張，這裡退回一個空白刷版，讓那
+    /// 一張卡的圖顯示不出來，而不是整個圖鑑（任何列出卡片的畫面）直接崩潰
+    var defaultPrinting: Printing {
+        printings.first ?? Printing(id: id, rarity: "", imageURL: URL(string: "about:blank")!, isFoil: false)
+    }
 
     /// 商品代碼：卡號最後一個「-」前面的部分（如 "SFN/S108-024" → "SFN/S108"）。
     /// 同系列常常橫跨好幾波不同商品，這是用來分開瀏覽用的依據——見
